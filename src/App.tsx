@@ -1,8 +1,6 @@
-import React from 'react';
-import { useState } from 'react';
+import React, { useState } from 'react';
 import Navigation from './components/Navigation';
 import AuthModal from './components/AuthModal';
-import StripeCheckout from './components/StripeCheckout';
 import Hero from './components/Hero';
 import TrustedBy from './components/TrustedBy';
 import Features from './components/Features';

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Mail, Eye, EyeOff } from 'lucide-react';
+import { X, Eye, EyeOff } from 'lucide-react';
 
 import { signInWithGoogle } from '../utils/googleAuth';
 
