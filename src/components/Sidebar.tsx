@@ -1,132 +1,102 @@
 import React from 'react';
-import { LayoutDashboard, Briefcase, FileText, BrainCircuit, Link, Database, Settings, PanelLeftClose, PanelRightClose } from 'lucide-react';
+import { Link, useLocation } from 'react-router-dom';
+import { Home, Briefcase, FileText, BrainCircuit, Link as LinkIcon, Settings, LogOut, ChevronFirst, ChevronLast, Truck } from 'lucide-react';
 
 interface SidebarProps {
   isSidebarOpen: boolean;
   toggleSidebar: () => void;
+  onLogout: () => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ isSidebarOpen, toggleSidebar }) => {
-  const [showLogoutPopup, setShowLogoutPopup] = React.useState(false);
+const SidebarContext = React.createContext({ isSidebarOpen: true });
 
-  const handleLogoutClick = () => {
-    setShowLogoutPopup(true);
-  };
-
-  const handleLogoutConfirm = () => {
-    setShowLogoutPopup(false);
-    window.location.reload(); // Redirect to landing page
-  };
-
-  const handleLogoutCancel = () => {
-    setShowLogoutPopup(false);
-  };
-
+const Sidebar: React.FC<SidebarProps> = ({ isSidebarOpen, toggleSidebar, onLogout }) => {
   return (
-    <div className={`h-screen bg-slate-900 border-r border-slate-700 text-slate-300 flex flex-col transition-all duration-300 ease-in-out ${isSidebarOpen ? 'w-64' : 'w-20'}`}>
-      {/* Logo Area */}
-      {isSidebarOpen && (
-        <div className="p-4 flex flex-col items-center">
-          <img src="/logo.svg" alt="Blueprint Logo" className="h-12 w-auto mb-2" />
-          <span className="text-sm text-slate-400">Client Name</span>
+    <aside className={`h-screen transition-all duration-300 ease-in-out ${isSidebarOpen ? 'w-64' : 'w-20'}`}>
+      <nav className="h-full flex flex-col bg-white/5 border-r border-white/10 backdrop-blur-xl shadow-2xl">
+        <div className="p-4 pb-2 flex justify-between items-center">
+          <img src="/logo-new.png" className={`overflow-hidden transition-all ${isSidebarOpen ? 'w-32' : 'w-0'}`} alt="Blueprint Logo" />
+          <button onClick={toggleSidebar} className="p-1.5 rounded-lg bg-gray-50/5 hover:bg-gray-50/10">
+            {isSidebarOpen ? <ChevronFirst /> : <ChevronLast />}
+          </button>
         </div>
-      )}
 
-      {/* Navigation Links */}
-      <nav className="flex-1">
-        <ul className="space-y-2">
-          <li className="pl-4 py-2 bg-slate-800 border-l-4 border-blue-500">
-            <a href="#" className="flex items-center gap-3">
-              <LayoutDashboard className="h-5 w-5 text-blue-500" />
-              {isSidebarOpen && <span>Home</span>}
-            </a>
-          </li>
-          <li className="pl-4 py-2 hover:bg-slate-800">
-            <a href="#" className="flex items-center gap-3">
-              <Briefcase className="h-5 w-5" />
-              {isSidebarOpen && <span>Projects</span>}
-            </a>
-          </li>
-          <li className="pl-4 py-2 hover:bg-slate-800">
-            <a href="#" className="flex items-center gap-3">
-              <FileText className="h-5 w-5" />
-              {isSidebarOpen && <span>Quotes</span>}
-            </a>
-          </li>
-          <li className="pl-4 py-2 hover:bg-slate-800">
-            <a href="#" className="flex items-center gap-3">
-              <BrainCircuit className="h-5 w-5" />
-              {isSidebarOpen && <span>AI-Copilot</span>}
-            </a>
-          </li>
-          <li className="pl-4 py-2 hover:bg-slate-800">
-            <a href="#" className="flex items-center gap-3">
-              <Link className="h-5 w-5" />
-              {isSidebarOpen && <span>Integrations</span>}
-            </a>
-          </li>
-          <li className="pl-4 py-2 hover:bg-slate-800">
-            <a href="#" className="flex items-center gap-3">
-              <Database className="h-5 w-5" />
-              {isSidebarOpen && <span>Providers Data</span>}
-            </a>
-          </li>
-        </ul>
-      </nav>
+        <SidebarContext.Provider value={{ isSidebarOpen }}>
+          <ul className="flex-1 px-3">
+            <Link to="/">
+              <SidebarItem icon={<Home size={20} />} text="Home" path="/" />
+            </Link>
+            <Link to="/projects">
+              <SidebarItem icon={<Briefcase size={20} />} text="Projects" path="/projects" />
+            </Link>
+            <Link to="/quotes">
+              <SidebarItem icon={<FileText size={20} />} text="Quotes" path="/quotes" />
+            </Link>
+            <Link to="/ai-copilot">
+              <SidebarItem icon={<BrainCircuit size={20} />} text="AI-Copilot" path="/ai-copilot" />
+            </Link>
+            <Link to="/vendors">
+              <SidebarItem icon={<Truck size={20} />} text="Vendors Data" path="/vendors" />
+            </Link>
+            <Link to="/integrations">
+              <SidebarItem icon={<LinkIcon size={20} />} text="Integrations" path="/integrations" />
+            </Link>
+          </ul>
+        </SidebarContext.Provider>
 
-      {/* Toggle Button */}
-      <div className="p-4">
-        <button
-          onClick={toggleSidebar}
-          className="flex items-center gap-3 hover:bg-slate-800 py-2 pl-4 text-slate-300"
-        >
-          {isSidebarOpen ? <PanelLeftClose className="h-5 w-5" /> : <PanelRightClose className="h-5 w-5" />}
-          {isSidebarOpen && <span>Collapse</span>}
-        </button>
-      </div>
-
-      {/* Settings Link */}
-      <div className="p-4">
-        <a href="#" className="flex items-center gap-3 hover:bg-slate-800 py-2 pl-4">
-          <Settings className="h-5 w-5" />
-          {isSidebarOpen && <span>Settings</span>}
-        </a>
-      </div>
-
-      {/* Logout Button */}
-      <div className="p-4">
-        <button
-          onClick={handleLogoutClick}
-          className="flex items-center gap-3 hover:bg-slate-800 py-2 pl-4 text-slate-300"
-        >
-          <span>Log Out</span>
-        </button>
-      </div>
-
-      {/* Logout Popup */}
-      {showLogoutPopup && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center">
-          <div className="bg-white rounded-lg shadow-lg p-6 text-center">
-            <p className="text-slate-700 mb-4">Are you sure you want to log out?</p>
-            <div className="flex justify-center gap-4">
-              <button
-                onClick={handleLogoutConfirm}
-                className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600"
-              >
-                Yes
-              </button>
-              <button
-                onClick={handleLogoutCancel}
-                className="bg-gray-300 text-slate-700 px-4 py-2 rounded-lg hover:bg-gray-400"
-              >
-                No
-              </button>
+        <div className="border-t border-white/10 flex p-3">
+          <img
+            src="https://ui-avatars.com/api/?background=c7d2fe&color=3730a3&bold=true&name=Ethan+Manuel"
+            alt=""
+            className="w-10 h-10 rounded-md"
+          />
+          <div className={`flex justify-between items-center overflow-hidden transition-all ${isSidebarOpen ? 'w-52 ml-3' : 'w-0'}`}>
+            <div className="leading-4">
+              <h4 className="font-semibold">Ethan Manuel</h4>
+              <span className="text-xs text-gray-400">carriedo78@gmail.com</span>
             </div>
           </div>
         </div>
-      )}
-    </div>
+        
+        <ul className="px-3 pb-3">
+            <Link to="/settings">
+              <SidebarItem icon={<Settings size={20} />} text="Settings" path="/settings" />
+            </Link>
+            <div onClick={onLogout}>
+              <SidebarItem icon={<LogOut size={20} />} text="Logout" />
+            </div>
+        </ul>
+      </nav>
+    </aside>
   );
 };
+
+interface SidebarItemProps {
+  icon: React.ReactNode;
+  text: string;
+  path?: string;
+  alert?: boolean;
+}
+
+function SidebarItem({ icon, text, path, alert }: SidebarItemProps) {
+  const { isSidebarOpen } = React.useContext(SidebarContext);
+  const location = useLocation();
+  const isActive = path && location.pathname === path;
+  
+  return (
+    <li
+      className={`
+        relative flex items-center py-2 px-3 my-1
+        font-medium rounded-md cursor-pointer
+        transition-colors group
+        ${isActive ? 'bg-gradient-to-tr from-indigo-200 to-indigo-100 text-indigo-800' : 'hover:bg-indigo-50/10 text-gray-300'}
+    `}
+    >
+      {icon}
+      <span className={`overflow-hidden transition-all ${isSidebarOpen ? 'w-52 ml-3' : 'w-0'}`}>{text}</span>
+      {alert && <div className={`absolute right-2 w-2 h-2 rounded bg-indigo-400 ${isSidebarOpen ? '' : 'top-2'}`} />}
+    </li>
+  );
+}
 
 export default Sidebar;
