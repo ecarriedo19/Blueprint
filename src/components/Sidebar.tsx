@@ -1,7 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Home, Briefcase, FileText, BrainCircuit, Link as LinkIcon, Settings, LogOut, ChevronFirst, ChevronLast, Truck } from 'lucide-react';
-import ThemeToggle from './ThemeToggle';
 
 interface SidebarProps {
   isSidebarOpen: boolean;
@@ -70,21 +69,9 @@ const Sidebar: React.FC<SidebarProps> = ({ isSidebarOpen, toggleSidebar, onLogou
             <Link to="/settings">
               <SidebarItem icon={<Settings size={20} />} text="Settings" path="/settings" />
             </Link>
-            <div className="flex items-center gap-2">
-              <div onClick={onLogout} className="flex-1">
-                <SidebarItem icon={<LogOut size={20} />} text="Logout" />
-              </div>
-              {isSidebarOpen && (
-                <div className="flex-shrink-0">
-                  <ThemeToggle />
-                </div>
-              )}
+            <div onClick={onLogout}>
+              <SidebarItem icon={<LogOut size={20} />} text="Logout" />
             </div>
-            {!isSidebarOpen && (
-              <div className="flex justify-center mt-2">
-                <ThemeToggle />
-              </div>
-            )}
         </ul>
       </nav>
     </aside>
