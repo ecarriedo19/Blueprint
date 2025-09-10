@@ -4,8 +4,33 @@ const sqlite3 = require('sqlite3').verbose();
 const cors = require('cors');
 const session = require('express-session');
 const SQLiteStore = require('connect-sqlite3')(session);
+const { createClient } = require('@supabase/supabase-js');
+const { pipeline } = require('@xenova/transformers');
+require('dotenv').config();
+
 const app = express();
 const PORT = 4000;
+
+// Initialize Supabase client
+let supabase = null;
+let embedder = null;
+
+if (process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY) {
+  supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+  console.log('✅ Supabase client initialized');
+  
+  // Initialize embedding pipeline for similarity search
+  pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2')
+    .then(model => {
+      embedder = model;
+      console.log('✅ Embedding model loaded for similarity search');
+    })
+    .catch(err => {
+      console.warn('⚠️  Could not load embedding model:', err.message);
+    });
+} else {
+  console.warn('⚠️  Supabase not configured - vector search will be disabled');
+}
 
 app.use(cors({
   origin: 'http://localhost:5173',
@@ -294,82 +319,211 @@ app.post('/api/company-profile', requireAuth, (req, res) => {
   );
 });
 
-// Get AI context - aggregates all user data for AI consumption
-app.get('/api/ai-context', requireAuth, (req, res) => {
+// Enhanced AI context endpoint with RAG capabilities
+app.get('/api/ai-context', requireAuth, async (req, res) => {
   const userId = req.session.userId;
-  const context = {
-    projects: [],
-    vendors: [],
-    quotes: [],
-    companyProfile: null
-  };
+  const query = req.query.q || req.query.query || '';
+  
+  console.log(`🤖 AI Context request from user ${userId}${query ? ` with query: "${query}"` : ''}`);
+  
+  try {
+    // Part 1: Get user's private data from SQLite
+    const privateContext = await getUserPrivateContext(userId);
+    
+    // Part 2: Get general knowledge from Supabase (if query provided and Supabase is available)
+    let knowledgeContext = '';
+    if (query && supabase && embedder) {
+      try {
+        knowledgeContext = await getRelevantKnowledge(query);
+      } catch (error) {
+        console.warn('⚠️  Knowledge search failed:', error.message);
+      }
+    }
+    
+    // Part 3: Combine contexts
+    const combinedContext = buildCombinedContext(privateContext, knowledgeContext, query);
+    
+    res.json({
+      context: combinedContext,
+      sources: {
+        privateData: !!privateContext.projects.length || !!privateContext.vendors.length || !!privateContext.quotes.length,
+        knowledgeBase: !!knowledgeContext,
+        query: query || null
+      },
+      rawData: privateContext
+    });
+    
+  } catch (error) {
+    console.error('❌ AI Context error:', error);
+    res.status(500).json({ error: 'Failed to generate AI context' });
+  }
+});
 
-  // Get company profile
-  db.get('SELECT company_name FROM company_profile WHERE user_id = ?', [userId], (err, companyRow) => {
-    if (err) return res.status(500).json({ error: err.message });
-    context.companyProfile = companyRow;
+// Helper function to get user's private data from SQLite
+async function getUserPrivateContext(userId) {
+  return new Promise((resolve, reject) => {
+    const context = {
+      projects: [],
+      vendors: [],
+      quotes: [],
+      companyProfile: null
+    };
 
-    // Get user's projects
-    db.all('SELECT * FROM projects WHERE user_id = ?', [userId], (err, projectRows) => {
-      if (err) return res.status(500).json({ error: err.message });
-      context.projects = projectRows || [];
+    // Get company profile
+    db.get('SELECT company_name FROM company_profile WHERE user_id = ?', [userId], (err, companyRow) => {
+      if (err) return reject(err);
+      context.companyProfile = companyRow;
 
-      // Get user's vendors
-      db.all('SELECT * FROM vendors WHERE user_id = ?', [userId], (err, vendorRows) => {
-        if (err) return res.status(500).json({ error: err.message });
-        context.vendors = vendorRows || [];
+      // Get user's projects
+      db.all('SELECT * FROM projects WHERE user_id = ?', [userId], (err, projectRows) => {
+        if (err) return reject(err);
+        context.projects = projectRows || [];
 
-        // Get user's quotes
-        db.all('SELECT * FROM quotes WHERE user_id = ?', [userId], (err, quoteRows) => {
-          if (err) return res.status(500).json({ error: err.message });
-          context.quotes = quoteRows || [];
+        // Get user's vendors
+        db.all('SELECT * FROM vendors WHERE user_id = ?', [userId], (err, vendorRows) => {
+          if (err) return reject(err);
+          context.vendors = vendorRows || [];
 
-          // Format the context as markdown
-          let formattedContext = `# ${context.companyProfile?.company_name || 'Company'} Business Data\n\n`;
-          
-          // Projects section
-          formattedContext += `## Projects\n`;
-          if (context.projects.length > 0) {
-            context.projects.forEach(project => {
-              formattedContext += `- **${project.name}**: Budget $${project.budget?.toLocaleString()}, Status: ${project.status}\n`;
-              if (project.description) formattedContext += `  Description: ${project.description}\n`;
-            });
-          } else {
-            formattedContext += `- No projects found\n`;
-          }
-          
-          // Vendors section
-          formattedContext += `\n## Vendors\n`;
-          if (context.vendors.length > 0) {
-            context.vendors.forEach(vendor => {
-              formattedContext += `- **${vendor.name}**: ${vendor.specialty}`;
-              if (vendor.rating) formattedContext += `, Rating: ${vendor.rating}/5`;
-              if (vendor.contact_email) formattedContext += `, Contact: ${vendor.contact_email}`;
-              formattedContext += `\n`;
-            });
-          } else {
-            formattedContext += `- No vendors found\n`;
-          }
-          
-          // Quotes section
-          formattedContext += `\n## Quotes\n`;
-          if (context.quotes.length > 0) {
-            context.quotes.forEach(quote => {
-              formattedContext += `- **${quote.project_name}** by ${quote.vendor_name}: $${quote.amount?.toLocaleString()}, Status: ${quote.status}\n`;
-            });
-          } else {
-            formattedContext += `- No quotes found\n`;
-          }
-
-          res.json({ 
-            context: formattedContext,
-            rawData: context 
+          // Get user's quotes
+          db.all('SELECT * FROM quotes WHERE user_id = ?', [userId], (err, quoteRows) => {
+            if (err) return reject(err);
+            context.quotes = quoteRows || [];
+            resolve(context);
           });
         });
       });
     });
   });
-});
+}
+
+// Helper function to search general knowledge base
+async function getRelevantKnowledge(query) {
+  if (!supabase || !embedder) {
+    return '';
+  }
+  
+  try {
+    console.log('🔍 Searching knowledge base for:', query);
+    
+    // Generate embedding for the query
+    const cleanQuery = query.replace(/\n+/g, ' ').trim();
+    const queryOutput = await embedder(cleanQuery, { pooling: 'mean', normalize: true });
+    const queryEmbedding = Array.from(queryOutput.data);
+    
+    // Search for similar documents
+    const { data, error } = await supabase.rpc('search_knowledge', {
+      query_embedding: queryEmbedding,
+      match_threshold: 0.1,
+      match_count: 3
+    });
+    
+    if (error) {
+      console.warn('⚠️  Knowledge search RPC failed:', error.message);
+      
+      // Fallback: get all knowledge documents and do client-side similarity
+      const { data: allDocs, error: fetchError } = await supabase
+        .from('knowledge')
+        .select('title, content, file_path')
+        .limit(10);
+      
+      if (fetchError) {
+        throw new Error(`Knowledge fetch failed: ${fetchError.message}`);
+      }
+      
+      console.log(`📚 Retrieved ${allDocs?.length || 0} knowledge documents as fallback`);
+      return formatKnowledgeDocuments(allDocs || []);
+    }
+    
+    console.log(`📚 Found ${data?.length || 0} relevant knowledge documents`);
+    return formatKnowledgeDocuments(data || []);
+    
+  } catch (error) {
+    console.error('❌ Knowledge search error:', error);
+    throw error;
+  }
+}
+
+// Helper function to format knowledge documents
+function formatKnowledgeDocuments(docs) {
+  if (!docs || docs.length === 0) {
+    return '';
+  }
+  
+  let formatted = '\n\n## 📚 Relevant Knowledge Base Information\n\n';
+  
+  docs.forEach((doc, index) => {
+    formatted += `### ${doc.title}\n`;
+    formatted += `${doc.content}\n\n`;
+    if (index < docs.length - 1) {
+      formatted += '---\n\n';
+    }
+  });
+  
+  return formatted;
+}
+
+// Helper function to combine all contexts
+function buildCombinedContext(privateContext, knowledgeContext, query) {
+  let formattedContext = `# ${privateContext.companyProfile?.company_name || 'Company'} Business Data\n\n`;
+  
+  // Add query context if provided
+  if (query) {
+    formattedContext += `## 🎯 User Query\n"${query}"\n\n`;
+  }
+  
+  // Projects section
+  formattedContext += `## 📋 Projects\n`;
+  if (privateContext.projects.length > 0) {
+    privateContext.projects.forEach(project => {
+      formattedContext += `- **${project.name}**: Budget $${project.budget?.toLocaleString() || 'N/A'}, Status: ${project.status || 'Unknown'}\n`;
+      if (project.description) {
+        formattedContext += `  Description: ${project.description}\n`;
+      }
+    });
+  } else {
+    formattedContext += `- No projects found\n`;
+  }
+  
+  // Vendors section
+  formattedContext += `\n## 🏢 Vendors\n`;
+  if (privateContext.vendors.length > 0) {
+    privateContext.vendors.forEach(vendor => {
+      formattedContext += `- **${vendor.name}**: ${vendor.specialty || 'General'}`;
+      if (vendor.rating) formattedContext += `, Rating: ${vendor.rating}/5`;
+      if (vendor.contact_email) formattedContext += `, Contact: ${vendor.contact_email}`;
+      formattedContext += `\n`;
+    });
+  } else {
+    formattedContext += `- No vendors found\n`;
+  }
+  
+  // Quotes section
+  formattedContext += `\n## 💰 Quotes\n`;
+  if (privateContext.quotes.length > 0) {
+    privateContext.quotes.forEach(quote => {
+      formattedContext += `- **${quote.project_name || 'Unknown Project'}** by ${quote.vendor_name || 'Unknown Vendor'}: $${quote.amount?.toLocaleString() || 'N/A'}, Status: ${quote.status || 'Unknown'}\n`;
+    });
+  } else {
+    formattedContext += `- No quotes found\n`;
+  }
+  
+  // Add knowledge base context if available
+  if (knowledgeContext) {
+    formattedContext += knowledgeContext;
+  }
+  
+  // Add guidance for AI
+  formattedContext += `\n\n## 🤖 AI Assistant Guidelines\n`;
+  formattedContext += `- Use the above data to provide personalized advice for ${privateContext.companyProfile?.company_name || 'this company'}\n`;
+  formattedContext += `- Reference specific projects, vendors, or quotes when relevant\n`;
+  formattedContext += `- Combine insights from both private business data and general knowledge\n`;
+  if (query) {
+    formattedContext += `- Focus your response on answering: "${query}"\n`;
+  }
+  formattedContext += `- Provide actionable, construction-industry-specific guidance\n`;
+  
+  return formattedContext;
+}
 
 // Endpoint to add/find user (legacy endpoint, keeping for compatibility)
 app.post('/api/users-legacy', (req, res) => {
