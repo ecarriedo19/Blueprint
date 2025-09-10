@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { BrowserRouter as Router } from 'react-router-dom';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { ProjectProvider } from './contexts/ProjectState';
 import { checkRedirectResult } from './utils/googleAuth';
 import Toast from './components/Toast';
 import Navigation from './components/Navigation';
@@ -168,38 +169,40 @@ function App() {
 
   return (
     <ThemeProvider>
-      <Router>
-        <div className="min-h-screen bg-gray-50 dark:bg-gradient-to-br dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 transition-colors duration-300">
-          <Toast
-            message={toast.message}
-            isVisible={toast.isVisible}
-            onClose={hideToast}
-            type={toast.type}
-          />
-          {isLoggedIn ? (
-          <DashboardLayout 
-            companyName={companyName} 
-            updateCompanyName={updateCompanyName}
-            currentUser={currentUser}
-            onLogout={handleLogout}
-          />
-        ) : (
-          <>
-            <Navigation onAuthClick={handleAuthClick} />
-            <AuthModal isOpen={isAuthModalOpen} onClose={handleAuthClose} onLoginSuccess={handleLoginSuccess} />
-            <Hero onAuthClick={handleAuthClick} />
-            <TrustedBy />
-            <Features />
-            <AIWizard />
-            <Dashboard />
-            <Integrations />
-            <Pricing />
-            <FinalCTA onAuthClick={handleAuthClick} />
-            <Footer />
-          </>
-        )}
-        </div>
-      </Router>
+      <ProjectProvider>
+        <Router>
+          <div className="min-h-screen bg-gray-50 dark:bg-gradient-to-br dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 transition-colors duration-300">
+            <Toast
+              message={toast.message}
+              isVisible={toast.isVisible}
+              onClose={hideToast}
+              type={toast.type}
+            />
+            {isLoggedIn ? (
+            <DashboardLayout 
+              companyName={companyName} 
+              updateCompanyName={updateCompanyName}
+              currentUser={currentUser}
+              onLogout={handleLogout}
+            />
+          ) : (
+            <>
+              <Navigation onAuthClick={handleAuthClick} />
+              <AuthModal isOpen={isAuthModalOpen} onClose={handleAuthClose} onLoginSuccess={handleLoginSuccess} />
+              <Hero onAuthClick={handleAuthClick} />
+              <TrustedBy />
+              <Features />
+              <AIWizard />
+              <Dashboard />
+              <Integrations />
+              <Pricing />
+              <FinalCTA onAuthClick={handleAuthClick} />
+              <Footer />
+            </>
+          )}
+          </div>
+        </Router>
+      </ProjectProvider>
     </ThemeProvider>
   );
 }

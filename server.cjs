@@ -525,6 +525,223 @@ function buildCombinedContext(privateContext, knowledgeContext, query) {
   return formattedContext;
 }
 
+// Projects API Endpoints
+
+// Get all projects for the authenticated user
+app.get('/api/projects', requireAuth, (req, res) => {
+  const userId = req.session.userId;
+  
+  db.all(
+    'SELECT id, name, budget, status, description, created_at, created_at as updated_at FROM projects WHERE user_id = ? ORDER BY created_at DESC',
+    [userId],
+    (err, projects) => {
+      if (err) {
+        console.error('Database error fetching projects:', err);
+        return res.status(500).json({ error: 'Failed to fetch projects' });
+      }
+      
+      // Format dates and extract priority from description for frontend
+      const formattedProjects = projects.map(project => {
+        let description = project.description || '';
+        let priority = 'medium'; // default
+        
+        // Extract priority from description if it exists
+        const priorityMatch = description.match(/\[Priority: (low|medium|high|urgent)\]/);
+        if (priorityMatch) {
+          priority = priorityMatch[1];
+          description = description.replace(/\s*\[Priority: (low|medium|high|urgent)\]/, '').trim();
+        }
+        
+        return {
+          id: project.id,
+          name: project.name,
+          budget: project.budget,
+          status: project.status,
+          priority: priority,
+          description: description,
+          created_at: new Date(project.created_at).toISOString(),
+          updated_at: new Date(project.updated_at).toISOString()
+        };
+      });
+      
+      console.log(`📋 Fetched ${formattedProjects.length} projects for user ${userId}`);
+      res.json({ success: true, projects: formattedProjects });
+    }
+  );
+});
+
+// Create a new project for the authenticated user
+app.post('/api/projects', requireAuth, (req, res) => {
+  console.log('🔍 POST /api/projects - Request received');
+  console.log('🔍 Request body:', req.body);
+  console.log('🔍 User ID from session:', req.session.userId);
+  
+  const userId = req.session.userId;
+  // Support both old (projectName) and new (name) field names
+  const { projectName, name, budget, description, status, priority } = req.body;
+  
+  // Use whichever field is provided (prioritizing the new 'name' field)
+  const finalProjectName = name || projectName;
+  
+  console.log('🔍 Final project name:', finalProjectName);
+  
+  // Validation
+  if (!finalProjectName || !finalProjectName.trim()) {
+    console.log('❌ Validation failed: Project name is required');
+    return res.status(400).json({ error: 'Project name is required' });
+  }
+  
+  if (budget !== undefined && (isNaN(budget) || budget < 0)) {
+    return res.status(400).json({ error: 'Budget must be a valid positive number' });
+  }
+  
+  const projectData = {
+    name: finalProjectName.trim(),
+    budget: budget || null,
+    status: status || 'planning', // Use provided status or default
+    description: description?.trim() || null,
+    priority: priority || 'medium', // New field support
+    user_id: userId
+  };
+  
+  // Note: We'll store priority in description for now since the schema doesn't have a priority column
+  const finalDescription = projectData.description ? 
+    `${projectData.description} [Priority: ${projectData.priority}]` : 
+    `[Priority: ${projectData.priority}]`;
+  
+  db.run(
+    'INSERT INTO projects (name, budget, status, description, user_id) VALUES (?, ?, ?, ?, ?)',
+    [projectData.name, projectData.budget, projectData.status, finalDescription, projectData.user_id],
+    function(err) {
+      if (err) {
+        console.error('Database error creating project:', err);
+        return res.status(500).json({ error: 'Failed to create project' });
+      }
+      
+      const newProject = {
+        id: this.lastID,
+        name: projectData.name, // Use 'name' to match frontend expectations
+        budget: projectData.budget,
+        status: projectData.status,
+        priority: projectData.priority,
+        description: projectData.description,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+      
+      console.log(`✅ Created project "${projectData.name}" for user ${userId} with ID ${this.lastID}`);
+      res.status(201).json({ 
+        success: true, 
+        message: 'Project created successfully',
+        project: newProject 
+      });
+    }
+  );
+});
+
+// Update project status (useful for AI actions)
+app.patch('/api/projects/:projectId', requireAuth, (req, res) => {
+  const userId = req.session.userId;
+  const { projectId } = req.params;
+  const { status, budget, description, priority, name } = req.body;
+  
+  // Build dynamic query
+  const updates = [];
+  const values = [];
+  
+  if (name) {
+    updates.push('name = ?');
+    values.push(name.trim());
+  }
+  if (status) {
+    updates.push('status = ?');
+    values.push(status);
+  }
+  if (budget !== undefined) {
+    updates.push('budget = ?');
+    values.push(budget);
+  }
+  if (description !== undefined || priority !== undefined) {
+    // Handle priority embedded in description
+    let finalDescription = description || '';
+    const currentPriority = priority || 'medium';
+    
+    // Remove existing priority tag if any
+    finalDescription = finalDescription.replace(/\s*\[Priority: (low|medium|high|urgent)\]/, '').trim();
+    
+    // Add new priority tag
+    if (finalDescription) {
+      finalDescription = `${finalDescription} [Priority: ${currentPriority}]`;
+    } else {
+      finalDescription = `[Priority: ${currentPriority}]`;
+    }
+    
+    updates.push('description = ?');
+    values.push(finalDescription);
+  }
+  
+  if (updates.length === 0) {
+    return res.status(400).json({ error: 'No valid fields to update' });
+  }
+  
+  values.push(projectId, userId);
+  
+  db.run(
+    `UPDATE projects SET ${updates.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?`,
+    values,
+    function(err) {
+      if (err) {
+        console.error('Database error updating project:', err);
+        return res.status(500).json({ error: 'Failed to update project' });
+      }
+      
+      if (this.changes === 0) {
+        return res.status(404).json({ error: 'Project not found or access denied' });
+      }
+      
+      // Fetch the updated project to return it
+      db.get(
+        'SELECT id, name, budget, status, description, created_at, updated_at FROM projects WHERE id = ? AND user_id = ?',
+        [projectId, userId],
+        (err, project) => {
+          if (err) {
+            console.error('Error fetching updated project:', err);
+            return res.json({ success: true, message: 'Project updated successfully' });
+          }
+          
+          // Extract priority from description for response
+          let responseDescription = project.description || '';
+          let responsePriority = 'medium';
+          
+          const priorityMatch = responseDescription.match(/\[Priority: (low|medium|high|urgent)\]/);
+          if (priorityMatch) {
+            responsePriority = priorityMatch[1];
+            responseDescription = responseDescription.replace(/\s*\[Priority: (low|medium|high|urgent)\]/, '').trim();
+          }
+          
+          const updatedProject = {
+            id: project.id,
+            name: project.name,
+            budget: project.budget,
+            status: project.status,
+            priority: responsePriority,
+            description: responseDescription,
+            created_at: new Date(project.created_at).toISOString(),
+            updated_at: new Date(project.updated_at).toISOString()
+          };
+          
+          console.log(`📝 Updated project ${projectId} for user ${userId}`);
+          res.json({ 
+            success: true, 
+            message: 'Project updated successfully',
+            project: updatedProject
+          });
+        }
+      );
+    }
+  );
+});
+
 // Endpoint to add/find user (legacy endpoint, keeping for compatibility)
 app.post('/api/users-legacy', (req, res) => {
   const { id, email, name, provider } = req.body;

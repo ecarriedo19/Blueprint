@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { useProjects } from '../contexts/ProjectState';
 import PageHeader from './PageHeader';
 import Card from './Card';
 import Button from './Button';
@@ -12,11 +13,12 @@ interface Message {
 }
 
 const AiCopilotPage = () => {
+  const { addProject } = useProjects();
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
       type: 'ai',
-      content: 'Hello! I\'m your AI-powered construction planning assistant. I have access to your project data, vendor information, and quotes. How can I help you today?',
+      content: '🤖 Hello! I\'m your AI-powered construction planning assistant with **action-taking capabilities**. \n\nI can:\n• 📊 Answer questions using your project data and knowledge base\n• ⚡ **Create new projects** directly through chat\n• 🎯 Provide construction planning advice\n• 📚 Access vendor information and quotes\n\nTry saying: "Create a new project for renovating the downtown office" or ask me anything about construction planning!',
       timestamp: new Date()
     }
   ]);
@@ -61,7 +63,7 @@ const AiCopilotPage = () => {
       
       const { context, sources } = await contextResponse.json();
 
-      // Step 2: Try Gemini AI with enhanced RAG context + user question
+      // Step 2: Try Gemini AI with enhanced RAG context + Function Calling
       const geminiApiKey = import.meta.env.VITE_GEMINI_API_KEY;
       if (!geminiApiKey) {
         throw new Error('Gemini API key not configured. Please add VITE_GEMINI_API_KEY to your .env file.');
@@ -71,7 +73,47 @@ const AiCopilotPage = () => {
 
 User Question: "${userMessage.content}"
 
-Please provide a helpful, detailed response as a construction planning assistant. Use the provided business data and knowledge base information to give specific, actionable advice. If you reference any knowledge from the knowledge base, please cite it appropriately.`;
+You are a construction planning assistant with access to project management tools. You can help users create and manage projects.
+
+Please provide a helpful, detailed response. If the user is asking to create a project or mentions needing to start/track a new project, use the createProject function to help them.
+
+If you reference any knowledge from the knowledge base, please cite it appropriately.`;
+
+      // Define available functions for the AI
+      const tools = [
+        {
+          function_declarations: [
+            {
+              name: "createProject",
+              description: "Create a new project for the user. Use this when the user asks to create, start, or track a new project.",
+              parameters: {
+                type: "object",
+                properties: {
+                  name: {
+                    type: "string",
+                    description: "The name of the project"
+                  },
+                  description: {
+                    type: "string", 
+                    description: "A brief description of the project"
+                  },
+                  status: {
+                    type: "string",
+                    description: "The initial status of the project",
+                    enum: ["planning", "in-progress", "review", "completed", "on-hold"]
+                  },
+                  priority: {
+                    type: "string",
+                    description: "The priority level of the project",
+                    enum: ["low", "medium", "high", "urgent"]
+                  }
+                },
+                required: ["name"]
+              }
+            }
+          ]
+        }
+      ];
 
       const geminiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`, {
         method: 'POST',
@@ -84,6 +126,7 @@ Please provide a helpful, detailed response as a construction planning assistant
               text: prompt
             }]
           }],
+          tools: tools,
           generationConfig: {
             temperature: 0.7,
             topK: 40,
@@ -115,7 +158,65 @@ Please provide a helpful, detailed response as a construction planning assistant
       }
 
       const geminiData = await geminiResponse.json();
-      let aiResponseText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || 'I apologize, but I couldn\'t generate a response. Please try again.';
+      const candidate = geminiData.candidates?.[0];
+      
+      if (!candidate) {
+        throw new Error('No response generated from AI');
+      }
+
+      // Check if AI wants to call a function
+      const functionCall = candidate.content?.parts?.find((part: any) => part.functionCall);
+      let aiResponseText = '';
+      
+      if (functionCall) {
+        // Handle function call
+        const { name: functionName, args } = functionCall.functionCall;
+        
+        if (functionName === 'createProject') {
+          try {
+            // Debug: Log the function call arguments
+            console.log('Function call args:', args);
+            console.log('Args type:', typeof args);
+            console.log('Args keys:', Object.keys(args || {}));
+            
+            // Create the project using our context
+            const projectData = {
+              name: args.name || args.projectName || 'New Project',
+              description: args.description || '',
+              status: args.status || 'planning',
+              priority: args.priority || 'medium'
+            };
+            
+            console.log('Project data being sent:', projectData);
+            
+            await addProject(projectData);
+            
+            // Generate response about successful creation
+            aiResponseText = `✅ **Project Created Successfully!**
+
+I've created a new project for you:
+
+**Project Name:** ${projectData.name}
+**Description:** ${projectData.description || 'No description provided'}
+**Status:** ${projectData.status}
+**Priority:** ${projectData.priority}
+
+The project has been added to your Projects page where you can manage it further. You can update the status, priority, or add more details anytime.
+
+Is there anything else you'd like me to help you with for this project?`;
+            
+          } catch (error) {
+            aiResponseText = `❌ **Failed to Create Project**
+
+I encountered an error while trying to create the project: ${error instanceof Error ? error.message : 'Unknown error'}
+
+Please try again or create the project manually from the Projects page.`;
+          }
+        }
+      } else {
+        // Regular text response
+        aiResponseText = candidate.content?.parts?.[0]?.text || 'I apologize, but I couldn\'t generate a response. Please try again.';
+      }
       
       // Add source information if knowledge base was used
       if (sources?.knowledgeBase) {
@@ -244,7 +345,7 @@ ${context.substring(0, 500)}...
     <div className="space-y-6 h-full flex flex-col">
       <PageHeader 
         title="AI-Copilot" 
-        subtitle="Your AI-powered construction planning assistant with access to your project data."
+        subtitle="Your action-taking AI assistant with access to your project data and the ability to create projects via chat."
         size="lg"
       />
       
