@@ -37,11 +37,11 @@ const PageHeader: React.FC<PageHeaderProps> = ({
 
   return (
     <div className={`${currentSize.spacing} ${className}`}>
-      <h1 className={`${currentSize.title} font-bold bg-gradient-to-r from-white via-blue-100 to-purple-100 bg-clip-text text-transparent mb-3 leading-tight`}>
+      <h1 className={`${currentSize.title} font-bold bg-gradient-to-r from-gray-900 via-blue-800 to-purple-800 dark:from-white dark:via-blue-100 dark:to-purple-100 bg-clip-text text-transparent mb-3 leading-tight`}>
         {title}
       </h1>
       {subtitle && (
-        <p className={`${currentSize.subtitle} text-slate-300 mb-4 max-w-2xl`}>
+        <p className={`${currentSize.subtitle} text-gray-600 dark:text-slate-300 mb-4 max-w-2xl`}>
           {subtitle}
         </p>
       )}

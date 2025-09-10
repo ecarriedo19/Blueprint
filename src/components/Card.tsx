@@ -18,9 +18,9 @@ const Card: React.FC<CardProps> = ({
   const baseClasses = 'rounded-2xl border transition-all duration-300';
   
   const variantClasses = {
-    default: 'bg-slate-700/50 border-slate-600/50 backdrop-blur-sm shadow-xl',
-    gradient: 'bg-gradient-to-br from-slate-800/90 to-slate-900/90 border-slate-700/50 backdrop-blur-sm shadow-2xl',
-    glass: 'bg-white/5 border-white/10 backdrop-blur-xl shadow-2xl hover:bg-white/10 hover:border-white/20'
+    default: 'bg-white/90 dark:bg-slate-700/50 border-gray-200/50 dark:border-slate-600/50 backdrop-blur-sm shadow-xl',
+    gradient: 'bg-gradient-to-br from-white/95 to-gray-50/95 dark:from-slate-800/90 dark:to-slate-900/90 border-gray-200/50 dark:border-slate-700/50 backdrop-blur-sm shadow-2xl',
+    glass: 'bg-white/20 dark:bg-white/5 border-gray-200/30 dark:border-white/10 backdrop-blur-xl shadow-2xl hover:bg-white/30 dark:hover:bg-white/10 hover:border-gray-300/50 dark:hover:border-white/20'
   };
 
   const paddingClasses = {

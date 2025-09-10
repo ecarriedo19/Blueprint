@@ -22,9 +22,9 @@ const Button: React.FC<ButtonProps> = ({
   
   const variantClasses = {
     primary: 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-lg hover:shadow-xl transform hover:scale-105',
-    secondary: 'bg-gradient-to-r from-slate-600 to-slate-700 hover:from-slate-700 hover:to-slate-800 text-white shadow-lg hover:shadow-xl transform hover:scale-105',
-    outline: 'border-2 border-blue-500 text-blue-400 hover:bg-blue-500 hover:text-white backdrop-blur-sm bg-white/5 hover:bg-blue-500/20',
-    ghost: 'text-slate-300 hover:text-white hover:bg-white/10 backdrop-blur-sm'
+    secondary: 'bg-gradient-to-r from-gray-600 to-gray-700 dark:from-slate-600 dark:to-slate-700 hover:from-gray-700 hover:to-gray-800 dark:hover:from-slate-700 dark:hover:to-slate-800 text-white shadow-lg hover:shadow-xl transform hover:scale-105',
+    outline: 'border-2 border-blue-500 dark:border-blue-400 text-blue-600 dark:text-blue-400 hover:bg-blue-500 hover:text-white dark:hover:bg-blue-500 dark:hover:text-white backdrop-blur-sm bg-white/10 dark:bg-white/5 hover:bg-blue-500/20',
+    ghost: 'text-gray-600 dark:text-slate-300 hover:text-gray-800 dark:hover:text-white hover:bg-gray-100/50 dark:hover:bg-white/10 backdrop-blur-sm'
   };
 
   const sizeClasses = {

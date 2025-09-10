@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { BrowserRouter as Router } from 'react-router-dom';
+import { ThemeProvider } from './contexts/ThemeContext';
 import Toast from './components/Toast';
 import Navigation from './components/Navigation';
 import AuthModal from './components/AuthModal';
@@ -99,33 +100,35 @@ function App() {
   };
 
   return (
-    <Router>
-      <div className="min-h-screen bg-white">
-        <Toast
-          message={toast.message}
-          isVisible={toast.isVisible}
-          onClose={hideToast}
-          type={toast.type}
-        />
-        {isLoggedIn ? (
-        <DashboardLayout companyName={companyName} updateCompanyName={updateCompanyName} />
-      ) : (
-        <>
-          <Navigation onAuthClick={handleAuthClick} />
-          <AuthModal isOpen={isAuthModalOpen} onClose={handleAuthClose} onLoginSuccess={handleLoginSuccess} />
-          <Hero onAuthClick={handleAuthClick} />
-          <TrustedBy />
-          <Features />
-          <AIWizard />
-          <Dashboard />
-          <Integrations />
-          <Pricing />
-          <FinalCTA onAuthClick={handleAuthClick} />
-          <Footer />
-        </>
-      )}
-      </div>
-    </Router>
+    <ThemeProvider>
+      <Router>
+        <div className="min-h-screen bg-gray-50 dark:bg-gradient-to-br dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 transition-colors duration-300">
+          <Toast
+            message={toast.message}
+            isVisible={toast.isVisible}
+            onClose={hideToast}
+            type={toast.type}
+          />
+          {isLoggedIn ? (
+          <DashboardLayout companyName={companyName} updateCompanyName={updateCompanyName} />
+        ) : (
+          <>
+            <Navigation onAuthClick={handleAuthClick} />
+            <AuthModal isOpen={isAuthModalOpen} onClose={handleAuthClose} onLoginSuccess={handleLoginSuccess} />
+            <Hero onAuthClick={handleAuthClick} />
+            <TrustedBy />
+            <Features />
+            <AIWizard />
+            <Dashboard />
+            <Integrations />
+            <Pricing />
+            <FinalCTA onAuthClick={handleAuthClick} />
+            <Footer />
+          </>
+        )}
+        </div>
+      </Router>
+    </ThemeProvider>
   );
 }
 

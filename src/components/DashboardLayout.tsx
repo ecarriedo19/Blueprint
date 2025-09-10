@@ -30,7 +30,7 @@ const DashboardLayout = ({ companyName, updateCompanyName }: DashboardLayoutProp
   };
 
   return (
-    <div className="flex h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white">
+    <div className="flex h-screen bg-gray-50 dark:bg-gradient-to-br dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 text-gray-900 dark:text-white transition-colors duration-300">
       <Sidebar isSidebarOpen={isSidebarOpen} toggleSidebar={toggleSidebar} onLogout={handleLogout} />
 
       <main className="flex-1 p-8 overflow-y-auto">
@@ -47,40 +47,40 @@ const DashboardLayout = ({ companyName, updateCompanyName }: DashboardLayoutProp
             <div className="flex items-center justify-center w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-500 rounded-lg mx-auto mb-4">
               <Users className="w-6 h-6 text-white" />
             </div>
-            <h3 className="text-2xl font-bold text-white mb-1">2,847</h3>
-            <p className="text-slate-400">Total Users</p>
+            <h3 className="text-2xl font-bold text-gray-800 dark:text-white mb-1">2,847</h3>
+            <p className="text-gray-600 dark:text-slate-400">Total Users</p>
           </Card>
 
           <Card variant="glass" padding="md" className="text-center">
             <div className="flex items-center justify-center w-12 h-12 bg-gradient-to-r from-green-500 to-teal-500 rounded-lg mx-auto mb-4">
               <TrendingUp className="w-6 h-6 text-white" />
             </div>
-            <h3 className="text-2xl font-bold text-white mb-1">$24.8K</h3>
-            <p className="text-slate-400">Revenue</p>
+            <h3 className="text-2xl font-bold text-gray-800 dark:text-white mb-1">$24.8K</h3>
+            <p className="text-gray-600 dark:text-slate-400">Revenue</p>
           </Card>
 
           <Card variant="glass" padding="md" className="text-center">
             <div className="flex items-center justify-center w-12 h-12 bg-gradient-to-r from-orange-500 to-red-500 rounded-lg mx-auto mb-4">
               <BarChart3 className="w-6 h-6 text-white" />
             </div>
-            <h3 className="text-2xl font-bold text-white mb-1">94.2%</h3>
-            <p className="text-slate-400">Conversion</p>
+            <h3 className="text-2xl font-bold text-gray-800 dark:text-white mb-1">94.2%</h3>
+            <p className="text-gray-600 dark:text-slate-400">Conversion</p>
           </Card>
 
           <Card variant="glass" padding="md" className="text-center">
             <div className="flex items-center justify-center w-12 h-12 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg mx-auto mb-4">
               <Target className="w-6 h-6 text-white" />
             </div>
-            <h3 className="text-2xl font-bold text-white mb-1">87%</h3>
-            <p className="text-slate-400">Goal Progress</p>
+            <h3 className="text-2xl font-bold text-gray-800 dark:text-white mb-1">87%</h3>
+            <p className="text-gray-600 dark:text-slate-400">Goal Progress</p>
           </Card>
         </div>
 
         <Card variant="glass" className="mb-6">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h2 className="text-2xl font-bold text-white mb-2">Analytics Overview</h2>
-              <p className="text-slate-400">Comprehensive view of your key metrics and performance indicators</p>
+              <h2 className="text-2xl font-bold text-gray-800 dark:text-white mb-2">Analytics Overview</h2>
+              <p className="text-gray-600 dark:text-slate-400">Comprehensive view of your key metrics and performance indicators</p>
             </div>
             <div className="flex gap-3">
               <Button variant="outline" size="sm">Export Data</Button>
@@ -88,8 +88,8 @@ const DashboardLayout = ({ companyName, updateCompanyName }: DashboardLayoutProp
             </div>
           </div>
           
-          <div className="bg-slate-800/50 rounded-lg p-6 border border-slate-700/50">
-            <p className="text-slate-400 text-center py-12">
+          <div className="bg-gray-100/50 dark:bg-slate-800/50 rounded-lg p-6 border border-gray-200/50 dark:border-slate-700/50">
+            <p className="text-gray-600 dark:text-slate-400 text-center py-12">
               📊 Embedded Google Dashboard will go here.
               <br />
               <span className="text-sm">Connect your analytics to see real-time data visualization</span>
@@ -98,7 +98,7 @@ const DashboardLayout = ({ companyName, updateCompanyName }: DashboardLayoutProp
         </Card>
 
         <Card variant="gradient" padding="md">
-          <h3 className="text-xl font-bold text-white mb-4">Quick Actions</h3>
+          <h3 className="text-xl font-bold text-gray-800 dark:text-white mb-4">Quick Actions</h3>
           <div className="flex flex-wrap gap-3">
             <Button variant="primary" size="sm">Generate Report</Button>
             <Button variant="secondary" size="sm">Sync Data</Button>
