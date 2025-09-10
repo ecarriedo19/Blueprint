@@ -5,12 +5,13 @@ import { Home, Briefcase, FileText, BrainCircuit, Link as LinkIcon, Settings, Lo
 interface SidebarProps {
   isSidebarOpen: boolean;
   toggleSidebar: () => void;
-  onLogout: () => void;
+  currentUser: any;
+  onLogout: () => Promise<void>;
 }
 
 const SidebarContext = React.createContext({ isSidebarOpen: true });
 
-const Sidebar: React.FC<SidebarProps> = ({ isSidebarOpen, toggleSidebar, onLogout }) => {
+const Sidebar: React.FC<SidebarProps> = ({ isSidebarOpen, toggleSidebar, currentUser, onLogout }) => {
   return (
     <aside className={`h-screen transition-all duration-300 ease-in-out ${isSidebarOpen ? 'w-64' : 'w-20'}`}>
       <nav className="h-full flex flex-col bg-white/5 dark:bg-white/5 border-r border-gray-200/50 dark:border-white/10 backdrop-blur-xl shadow-2xl">
@@ -53,14 +54,14 @@ const Sidebar: React.FC<SidebarProps> = ({ isSidebarOpen, toggleSidebar, onLogou
 
         <div className="border-t border-gray-200/50 dark:border-white/10 flex p-3">
           <img
-            src="https://ui-avatars.com/api/?background=c7d2fe&color=3730a3&bold=true&name=Ethan+Manuel"
+            src={currentUser?.profilePictureUrl || `https://ui-avatars.com/api/?background=c7d2fe&color=3730a3&bold=true&name=${encodeURIComponent(currentUser?.name || 'User')}`}
             alt=""
             className="w-10 h-10 rounded-md"
           />
           <div className={`flex justify-between items-center overflow-hidden transition-all ${isSidebarOpen ? 'w-52 ml-3' : 'w-0'}`}>
             <div className="leading-4">
-              <h4 className="font-semibold text-gray-800 dark:text-white">Ethan Manuel</h4>
-              <span className="text-xs text-gray-500 dark:text-gray-400">carriedo78@gmail.com</span>
+              <h4 className="font-semibold text-gray-800 dark:text-white">{currentUser?.name || 'Loading...'}</h4>
+              <span className="text-xs text-gray-500 dark:text-gray-400">{currentUser?.email || 'Loading...'}</span>
             </div>
           </div>
         </div>

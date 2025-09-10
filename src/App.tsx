@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { BrowserRouter as Router } from 'react-router-dom';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { checkRedirectResult } from './utils/googleAuth';
 import Toast from './components/Toast';
 import Navigation from './components/Navigation';
 import AuthModal from './components/AuthModal';
@@ -18,6 +19,7 @@ import DashboardLayout from './components/DashboardLayout';
 function App() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [currentUser, setCurrentUser] = useState<any>(null);
   const [companyName, setCompanyName] = useState('Company Co');
   const [toast, setToast] = useState<{ message: string; isVisible: boolean; type: 'success' | 'error' }>({ 
     message: '', 
@@ -33,28 +35,74 @@ function App() {
     setToast(prev => ({ ...prev, isVisible: false }));
   }, []);
 
+  // Check for existing session on app load
   useEffect(() => {
-    // Fetch company name when app loads
-    const fetchCompanyProfile = async () => {
+    const checkSession = async () => {
       try {
-        const res = await fetch('http://localhost:4000/api/company-profile');
-        if (!res.ok) {
-          throw new Error(`HTTP error! status: ${res.status}`);
+        // First check for redirect result from Google OAuth
+        const redirectUser = await checkRedirectResult();
+        if (redirectUser) {
+          console.log('Processing redirect result:', redirectUser);
+          // Handle the redirect result by calling our backend
+          const response = await fetch('http://localhost:4000/api/users', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(redirectUser),
+            credentials: 'include'
+          });
+
+          if (response.ok) {
+            const responseData = await response.json();
+            setCurrentUser(responseData.user);
+            setIsLoggedIn(true);
+            return;
+          }
         }
-        const data = await res.json();
-        if (data.company_name) {
-          setCompanyName(data.company_name);
-        } else {
-          throw new Error('Company name not found in response');
+
+        // If no redirect result, check for existing session
+        const response = await fetch('http://localhost:4000/api/me', {
+          credentials: 'include'
+        });
+        
+        if (response.ok) {
+          const userData = await response.json();
+          setCurrentUser(userData);
+          setIsLoggedIn(true);
         }
-      } catch (err) {
-        console.error('Error fetching company name:', err);
-        showToast('Failed to load company profile', 'error');
+      } catch (error) {
+        console.log('No existing session found:', error);
       }
     };
 
-    fetchCompanyProfile();
-  }, [showToast]);
+    checkSession();
+  }, []);
+
+  useEffect(() => {
+    // Fetch company name when user is logged in
+    if (isLoggedIn) {
+      const fetchCompanyProfile = async () => {
+        try {
+          const res = await fetch('http://localhost:4000/api/company-profile', {
+            credentials: 'include'
+          });
+          if (!res.ok) {
+            throw new Error(`HTTP error! status: ${res.status}`);
+          }
+          const data = await res.json();
+          if (data.company_name) {
+            setCompanyName(data.company_name);
+          } else {
+            throw new Error('Company name not found in response');
+          }
+        } catch (err) {
+          console.error('Error fetching company name:', err);
+          showToast('Failed to load company profile', 'error');
+        }
+      };
+
+      fetchCompanyProfile();
+    }
+  }, [isLoggedIn, showToast]);
 
   const updateCompanyName = async (newName: string) => {
     if (!newName.trim()) {
@@ -66,7 +114,8 @@ function App() {
       const response = await fetch('http://localhost:4000/api/company-profile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ company_name: newName.trim() })
+        body: JSON.stringify({ company_name: newName.trim() }),
+        credentials: 'include'
       });
 
       if (!response.ok) {
@@ -94,9 +143,27 @@ function App() {
     setIsAuthModalOpen(false);
   };
 
-  const handleLoginSuccess = () => {
+  const handleLoginSuccess = (userData?: any) => {
     setIsLoggedIn(true);
     setIsAuthModalOpen(false);
+    if (userData) {
+      setCurrentUser(userData);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await fetch('http://localhost:4000/api/logout', {
+        method: 'POST',
+        credentials: 'include'
+      });
+    } catch (error) {
+      console.error('Logout error:', error);
+    } finally {
+      setIsLoggedIn(false);
+      setCurrentUser(null);
+      setCompanyName('Company Co');
+    }
   };
 
   return (
@@ -110,7 +177,12 @@ function App() {
             type={toast.type}
           />
           {isLoggedIn ? (
-          <DashboardLayout companyName={companyName} updateCompanyName={updateCompanyName} />
+          <DashboardLayout 
+            companyName={companyName} 
+            updateCompanyName={updateCompanyName}
+            currentUser={currentUser}
+            onLogout={handleLogout}
+          />
         ) : (
           <>
             <Navigation onAuthClick={handleAuthClick} />

@@ -2,11 +2,39 @@
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
 const cors = require('cors');
+const session = require('express-session');
+const SQLiteStore = require('connect-sqlite3')(session);
 const app = express();
 const PORT = 4000;
 
-app.use(cors());
+app.use(cors({
+  origin: 'http://localhost:5173',
+  credentials: true
+}));
 app.use(express.json());
+
+// Add security headers to help with OAuth
+app.use((req, res, next) => {
+  res.header('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+  res.header('Cross-Origin-Embedder-Policy', 'unsafe-none');
+  next();
+});
+
+// Session configuration
+app.use(session({
+  store: new SQLiteStore({
+    db: 'sessions.db',
+    dir: './'
+  }),
+  secret: 'blueprint-session-secret-key-change-in-production',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: false, // Set to true in production with HTTPS
+    httpOnly: true,
+    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+  }
+}));
 
 // Initialize SQLite DB
 const db = new sqlite3.Database('./users.db', (err) => {
@@ -16,16 +44,31 @@ const db = new sqlite3.Database('./users.db', (err) => {
 
 // Create tables in sequence
 db.serialize(() => {
+  // Drop existing tables to recreate with new schema
+  db.run(`DROP TABLE IF EXISTS quotes`);
+  db.run(`DROP TABLE IF EXISTS projects`);
+  db.run(`DROP TABLE IF EXISTS vendors`);
+  db.run(`DROP TABLE IF EXISTS company_profile`);
+  db.run(`DROP TABLE IF EXISTS users`);
+
+  // Create users table with new schema
   db.run(`CREATE TABLE IF NOT EXISTS users (
-    id TEXT PRIMARY KEY,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    googleId TEXT UNIQUE,
     email TEXT UNIQUE,
     name TEXT,
-    provider TEXT
+    profilePictureUrl TEXT,
+    provider TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
 
+  // Create company_profile table with user relationship
   db.run(`CREATE TABLE IF NOT EXISTS company_profile (
     id TEXT PRIMARY KEY DEFAULT 'default',
-    company_name TEXT NOT NULL DEFAULT 'Company Co'
+    company_name TEXT NOT NULL DEFAULT 'Company Co',
+    user_id INTEGER,
+    FOREIGN KEY (user_id) REFERENCES users (id)
   )`);
 
   // Sample tables for AI context (you can expand these as needed)
@@ -35,7 +78,9 @@ db.serialize(() => {
     budget REAL,
     status TEXT,
     description TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    user_id INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users (id)
   )`);
 
   db.run(`CREATE TABLE IF NOT EXISTS quotes (
@@ -44,7 +89,9 @@ db.serialize(() => {
     vendor_name TEXT,
     amount REAL,
     status TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    user_id INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users (id)
   )`);
 
   db.run(`CREATE TABLE IF NOT EXISTS vendors (
@@ -53,54 +100,203 @@ db.serialize(() => {
     specialty TEXT,
     contact_email TEXT,
     phone TEXT,
-    rating REAL
+    rating REAL,
+    user_id INTEGER,
+    FOREIGN KEY (user_id) REFERENCES users (id)
   )`);
 
   // Insert default company profile if it doesn't exist
   db.run(`INSERT OR IGNORE INTO company_profile (id, company_name) VALUES ('default', 'Company Co')`);
 
-  // Insert sample data for demonstration
-  db.run(`INSERT OR IGNORE INTO projects (id, name, budget, status, description) VALUES 
-    (1, 'Downtown Tower', 2400000, 'In Progress', 'Commercial high-rise construction project'),
-    (2, 'Residential Complex', 1800000, 'Planning', 'Multi-family residential development'),
-    (3, 'Shopping Center Renovation', 950000, 'Completed', 'Complete renovation of existing retail space')`);
-
-  db.run(`INSERT OR IGNORE INTO vendors (id, name, specialty, contact_email, phone, rating) VALUES 
-    (1, 'Concrete Corp', 'Concrete Supplies', 'info@concretecorp.com', '555-0123', 4.5),
-    (2, 'Steel Solutions', 'Structural Steel', 'contact@steelsolutions.com', '555-0456', 4.8),
-    (3, 'Electric Pro', 'Electrical Work', 'hello@electricpro.com', '555-0789', 4.2)`);
-
-  db.run(`INSERT OR IGNORE INTO quotes (id, project_name, vendor_name, amount, status) VALUES 
-    (1, 'Downtown Tower', 'Concrete Corp', 450000, 'Approved'),
-    (2, 'Downtown Tower', 'Steel Solutions', 680000, 'Pending'),
-    (3, 'Residential Complex', 'Electric Pro', 125000, 'Under Review')`);
+  console.log('Database tables created/updated successfully');
 });
 
-// Get company profile
-app.get('/api/company-profile', (req, res) => {
-  db.get('SELECT company_name FROM company_profile WHERE id = ?', ['default'], (err, row) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json({ company_name: row ? row.company_name : 'Company Co' });
+// Test endpoint
+app.get('/api/test', (req, res) => {
+  res.json({ 
+    message: 'Backend is working!', 
+    timestamp: new Date().toISOString(),
+    session: req.session.userId ? `User ID: ${req.session.userId}` : 'No session'
   });
 });
 
+// Authentication middleware
+const requireAuth = (req, res, next) => {
+  if (!req.session.userId) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  next();
+};
+
+// Get current user profile
+app.get('/api/me', requireAuth, (req, res) => {
+  db.get(
+    'SELECT id, googleId, email, name, profilePictureUrl, provider FROM users WHERE id = ?',
+    [req.session.userId],
+    (err, user) => {
+      if (err) return res.status(500).json({ error: err.message });
+      if (!user) return res.status(404).json({ error: 'User not found' });
+      res.json(user);
+    }
+  );
+});
+
+// Enhanced Google Auth endpoint - handles user creation/update and session
+app.post('/api/users', (req, res) => {
+  console.log('Received user data:', req.body);
+  const { id: googleId, email, name, profilePictureUrl, provider } = req.body;
+  
+  if (!googleId || !email) {
+    console.error('Missing required fields:', { googleId, email });
+    return res.status(400).json({ error: 'Google ID and email are required' });
+  }
+
+  // Check if user exists by googleId
+  db.get(
+    'SELECT * FROM users WHERE googleId = ?',
+    [googleId],
+    (err, existingUser) => {
+      if (err) {
+        console.error('Database error checking user:', err);
+        return res.status(500).json({ error: err.message });
+      }
+      
+      console.log('Existing user found:', existingUser);
+      
+      if (existingUser) {
+        // Update existing user
+        db.run(
+          'UPDATE users SET name = ?, email = ?, profilePictureUrl = ?, updated_at = CURRENT_TIMESTAMP WHERE googleId = ?',
+          [name, email, profilePictureUrl, googleId],
+          function(err) {
+            if (err) {
+              console.error('Database error updating user:', err);
+              return res.status(500).json({ error: err.message });
+            }
+            
+            console.log('User updated successfully');
+            // Set session
+            req.session.userId = existingUser.id;
+            res.json({ 
+              success: true, 
+              user: { 
+                id: existingUser.id, 
+                googleId, 
+                email, 
+                name, 
+                profilePictureUrl,
+                provider 
+              } 
+            });
+          }
+        );
+      } else {
+        // Create new user
+        console.log('Creating new user...');
+        db.run(
+          'INSERT INTO users (googleId, email, name, profilePictureUrl, provider) VALUES (?, ?, ?, ?, ?)',
+          [googleId, email, name, profilePictureUrl, provider],
+          function(err) {
+            if (err) {
+              console.error('Database error creating user:', err);
+              return res.status(500).json({ error: err.message });
+            }
+            
+            const newUserId = this.lastID;
+            console.log('New user created with ID:', newUserId);
+            
+            // Create default company profile for new user
+            db.run(
+              'INSERT INTO company_profile (id, company_name, user_id) VALUES (?, ?, ?)',
+              [`user_${newUserId}`, 'Company Co', newUserId],
+              (err) => {
+                if (err) console.error('Error creating company profile:', err);
+                else console.log('Company profile created for user:', newUserId);
+              }
+            );
+            
+            // Set session
+            req.session.userId = newUserId;
+            res.json({ 
+              success: true, 
+              user: { 
+                id: newUserId, 
+                googleId, 
+                email, 
+                name, 
+                profilePictureUrl,
+                provider 
+              } 
+            });
+          }
+        );
+      }
+    }
+  );
+});
+
+// Logout endpoint
+app.post('/api/logout', (req, res) => {
+  req.session.destroy((err) => {
+    if (err) return res.status(500).json({ error: 'Failed to logout' });
+    res.json({ success: true });
+  });
+});
+
+// Get company profile
+app.get('/api/company-profile', requireAuth, (req, res) => {
+  db.get(
+    'SELECT company_name FROM company_profile WHERE user_id = ?', 
+    [req.session.userId], 
+    (err, row) => {
+      if (err) return res.status(500).json({ error: err.message });
+      if (!row) {
+        // Create default profile if none exists
+        db.run(
+          'INSERT INTO company_profile (id, company_name, user_id) VALUES (?, ?, ?)',
+          [`user_${req.session.userId}`, 'Company Co', req.session.userId],
+          function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ company_name: 'Company Co' });
+          }
+        );
+      } else {
+        res.json({ company_name: row.company_name });
+      }
+    }
+  );
+});
+
 // Update company profile
-app.post('/api/company-profile', (req, res) => {
+app.post('/api/company-profile', requireAuth, (req, res) => {
   const { company_name } = req.body;
   if (!company_name) return res.status(400).json({ error: 'Company name is required' });
   
   db.run(
-    'UPDATE company_profile SET company_name = ? WHERE id = ?',
-    [company_name, 'default'],
+    'UPDATE company_profile SET company_name = ? WHERE user_id = ?',
+    [company_name, req.session.userId],
     function(err) {
       if (err) return res.status(500).json({ error: err.message });
-      res.json({ success: true, company_name });
+      if (this.changes === 0) {
+        // Create if doesn't exist
+        db.run(
+          'INSERT INTO company_profile (id, company_name, user_id) VALUES (?, ?, ?)',
+          [`user_${req.session.userId}`, company_name, req.session.userId],
+          function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ success: true, company_name });
+          }
+        );
+      } else {
+        res.json({ success: true, company_name });
+      }
     }
   );
 });
 
 // Get AI context - aggregates all user data for AI consumption
-app.get('/api/ai-context', (req, res) => {
+app.get('/api/ai-context', requireAuth, (req, res) => {
+  const userId = req.session.userId;
   const context = {
     projects: [],
     vendors: [],
@@ -109,22 +305,22 @@ app.get('/api/ai-context', (req, res) => {
   };
 
   // Get company profile
-  db.get('SELECT company_name FROM company_profile WHERE id = ?', ['default'], (err, companyRow) => {
+  db.get('SELECT company_name FROM company_profile WHERE user_id = ?', [userId], (err, companyRow) => {
     if (err) return res.status(500).json({ error: err.message });
     context.companyProfile = companyRow;
 
-    // Get all projects
-    db.all('SELECT * FROM projects', (err, projectRows) => {
+    // Get user's projects
+    db.all('SELECT * FROM projects WHERE user_id = ?', [userId], (err, projectRows) => {
       if (err) return res.status(500).json({ error: err.message });
       context.projects = projectRows || [];
 
-      // Get all vendors
-      db.all('SELECT * FROM vendors', (err, vendorRows) => {
+      // Get user's vendors
+      db.all('SELECT * FROM vendors WHERE user_id = ?', [userId], (err, vendorRows) => {
         if (err) return res.status(500).json({ error: err.message });
         context.vendors = vendorRows || [];
 
-        // Get all quotes
-        db.all('SELECT * FROM quotes', (err, quoteRows) => {
+        // Get user's quotes
+        db.all('SELECT * FROM quotes WHERE user_id = ?', [userId], (err, quoteRows) => {
           if (err) return res.status(500).json({ error: err.message });
           context.quotes = quoteRows || [];
 
@@ -175,89 +371,8 @@ app.get('/api/ai-context', (req, res) => {
   });
 });
 
-// AI Context endpoint - aggregates all user data for RAG
-app.get('/api/ai-context', (req, res) => {
-  const contextData = {
-    company: null,
-    projects: [],
-    vendors: [],
-    quotes: []
-  };
-
-  // Get company profile
-  db.get('SELECT company_name FROM company_profile WHERE id = ?', ['default'], (err, companyRow) => {
-    if (err) return res.status(500).json({ error: err.message });
-    contextData.company = companyRow;
-
-    // Get all projects
-    db.all('SELECT * FROM projects ORDER BY created_at DESC', (err, projectRows) => {
-      if (err) return res.status(500).json({ error: err.message });
-      contextData.projects = projectRows || [];
-
-      // Get all vendors
-      db.all('SELECT * FROM vendors ORDER BY rating DESC', (err, vendorRows) => {
-        if (err) return res.status(500).json({ error: err.message });
-        contextData.vendors = vendorRows || [];
-
-        // Get all quotes
-        db.all('SELECT * FROM quotes ORDER BY created_at DESC', (err, quoteRows) => {
-          if (err) return res.status(500).json({ error: err.message });
-          contextData.quotes = quoteRows || [];
-
-          // Format the context as a readable string
-          let formattedContext = `# ${contextData.company?.company_name || 'Company'} - Business Context\n\n`;
-
-          // Projects section
-          formattedContext += `## Current Projects\n`;
-          if (contextData.projects.length > 0) {
-            contextData.projects.forEach(project => {
-              formattedContext += `### ${project.name}\n`;
-              formattedContext += `- Budget: $${project.budget?.toLocaleString() || 'N/A'}\n`;
-              formattedContext += `- Status: ${project.status}\n`;
-              formattedContext += `- Description: ${project.description || 'No description'}\n\n`;
-            });
-          } else {
-            formattedContext += `No projects currently in the system.\n\n`;
-          }
-
-          // Vendors section
-          formattedContext += `## Vendor Network\n`;
-          if (contextData.vendors.length > 0) {
-            contextData.vendors.forEach(vendor => {
-              formattedContext += `### ${vendor.name}\n`;
-              formattedContext += `- Specialty: ${vendor.specialty}\n`;
-              formattedContext += `- Contact: ${vendor.contact_email}\n`;
-              formattedContext += `- Phone: ${vendor.phone}\n`;
-              formattedContext += `- Rating: ${vendor.rating}/5.0\n\n`;
-            });
-          } else {
-            formattedContext += `No vendors currently in the system.\n\n`;
-          }
-
-          // Quotes section
-          formattedContext += `## Recent Quotes\n`;
-          if (contextData.quotes.length > 0) {
-            contextData.quotes.forEach(quote => {
-              formattedContext += `### ${quote.project_name} - ${quote.vendor_name}\n`;
-              formattedContext += `- Amount: $${quote.amount?.toLocaleString() || 'N/A'}\n`;
-              formattedContext += `- Status: ${quote.status}\n\n`;
-            });
-          } else {
-            formattedContext += `No quotes currently in the system.\n\n`;
-          }
-
-          res.json({ 
-            context: formattedContext,
-            raw_data: contextData
-          });
-        });
-      });
-    });
-  });
-});
-
-// Endpoint to add/find user
-app.post('/api/users', (req, res) => {
+// Endpoint to add/find user (legacy endpoint, keeping for compatibility)
+app.post('/api/users-legacy', (req, res) => {
   const { id, email, name, provider } = req.body;
   db.run(
     `INSERT OR IGNORE INTO users (id, email, name, provider) VALUES (?, ?, ?, ?)`,

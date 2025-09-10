@@ -50,7 +50,9 @@ const AiCopilotPage = () => {
 
     try {
       // Step 1: Fetch context from our backend
-      const contextResponse = await fetch('http://localhost:4000/api/ai-context');
+      const contextResponse = await fetch('http://localhost:4000/api/ai-context', {
+        credentials: 'include'
+      });
       if (!contextResponse.ok) {
         throw new Error('Failed to fetch context data');
       }

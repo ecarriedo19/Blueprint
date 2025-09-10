@@ -15,23 +15,25 @@ import VendorsDataPage from './VendorsDataPage';
 interface DashboardLayoutProps {
   companyName: string;
   updateCompanyName: (name: string) => Promise<void>;
+  currentUser: any;
+  onLogout: () => Promise<void>;
 }
 
-const DashboardLayout = ({ companyName, updateCompanyName }: DashboardLayoutProps) => {
+const DashboardLayout = ({ companyName, updateCompanyName, currentUser, onLogout }: DashboardLayoutProps) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   const toggleSidebar = () => {
     setIsSidebarOpen((prev) => !prev);
   };
 
-  const handleLogout = () => {
-    // In a real app, you'd clear the user session here
-    window.location.reload();
-  };
-
   return (
     <div className="flex h-screen bg-gray-50 dark:bg-gradient-to-br dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 text-gray-900 dark:text-white transition-colors duration-300">
-      <Sidebar isSidebarOpen={isSidebarOpen} toggleSidebar={toggleSidebar} onLogout={handleLogout} />
+      <Sidebar 
+        isSidebarOpen={isSidebarOpen} 
+        toggleSidebar={toggleSidebar} 
+        currentUser={currentUser}
+        onLogout={onLogout} 
+      />
 
       <main className="flex-1 p-8 overflow-y-auto">
         <Routes>

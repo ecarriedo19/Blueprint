@@ -1,37 +1,81 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Eye, EyeOff } from 'lucide-react';
 
-import { signInWithGoogle } from '../utils/googleAuth';
+import { signInWithGoogle, checkRedirectResult } from '../utils/googleAuth';
 
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onLoginSuccess: () => void;
+  onLoginSuccess: (userData?: any) => void;
 }
 
 export default function AuthModal({ isOpen, onClose, onLoginSuccess }: AuthModalProps) {
-  async function handleGoogleSignIn() {
-    try {
-      const user = await signInWithGoogle();
-      console.log('Google User Data:', user); // Log user data
+  // Check for redirect result on component mount
+  useEffect(() => {
+    const handleRedirectResult = async () => {
+      try {
+        const user = await checkRedirectResult();
+        if (user) {
+          console.log('Redirect result user:', user);
+          await handleUserLogin(user);
+        }
+      } catch (error) {
+        console.error('Redirect result error:', error);
+      }
+    };
 
+    handleRedirectResult();
+  }, []);
+
+  const handleUserLogin = async (user: any) => {
+    try {
       const response = await fetch('http://localhost:4000/api/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(user),
+        credentials: 'include'
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        console.error('Backend Error:', errorData); // Log backend error
+        console.error('Backend Error:', errorData);
         throw new Error('Failed to save user data to backend');
       }
 
-      console.log('Backend Response:', await response.json()); // Log backend response
-      onLoginSuccess();
+      const responseData = await response.json();
+      console.log('Backend Response:', responseData);
+      onLoginSuccess(responseData.user);
     } catch (err) {
-      console.error('Google sign-in error:', err); // Log error details
-      alert('Google sign-in failed.');
+      console.error('User login error:', err);
+      alert('Login failed. Please try again.');
+    }
+  };
+
+  async function handleGoogleSignIn() {
+    try {
+      console.log('Starting Google sign-in...');
+      const user = await signInWithGoogle();
+      console.log('Google User Data:', user);
+      await handleUserLogin(user);
+    } catch (err: any) {
+      if (err.message === 'REDIRECT_INITIATED') {
+        // Redirect flow initiated, don't show error
+        console.log('Redirect flow initiated, waiting for return...');
+        return;
+      }
+      console.error('Google sign-in error:', err);
+      
+      // Provide more specific error messages
+      let errorMessage = 'Google sign-in failed. ';
+      if (err.code === 'auth/popup-blocked') {
+        errorMessage += 'Please allow popups for this site and try again.';
+      } else if (err.code === 'auth/popup-closed-by-user') {
+        errorMessage += 'Sign-in was cancelled.';
+      } else {
+        errorMessage += 'Please try again.';
+      }
+      
+      alert(errorMessage);
     }
   }
   const [isLogin, setIsLogin] = useState(true);
