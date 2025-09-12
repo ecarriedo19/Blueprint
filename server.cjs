@@ -98,8 +98,49 @@ db.serialize(() => {
     description TEXT,
     user_id INTEGER,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users (id)
   )`);
+
+  // Migration: Add updated_at column to existing projects table if it doesn't exist
+  db.get("PRAGMA table_info(projects)", (err, result) => {
+    if (err) {
+      console.error('Error checking table schema:', err);
+      return;
+    }
+    
+    // Check if updated_at column exists by querying all columns
+    db.all("PRAGMA table_info(projects)", (err, columns) => {
+      if (err) {
+        console.error('Error getting table columns:', err);
+        return;
+      }
+      
+      const hasUpdatedAt = columns.some(col => col.name === 'updated_at');
+      
+      if (!hasUpdatedAt) {
+        console.log('Adding updated_at column to projects table...');
+        // SQLite doesn't allow CURRENT_TIMESTAMP as default when adding to existing table
+        // So we add the column with NULL default, then update existing rows
+        db.run(`ALTER TABLE projects ADD COLUMN updated_at DATETIME`, (err) => {
+          if (err) {
+            console.error('Error adding updated_at column:', err);
+          } else {
+            // Update existing rows to have created_at as updated_at initial value
+            db.run(`UPDATE projects SET updated_at = created_at WHERE updated_at IS NULL`, (updateErr) => {
+              if (updateErr) {
+                console.error('Error updating existing updated_at values:', updateErr);
+              } else {
+                console.log('✅ updated_at column added and initialized successfully');
+              }
+            });
+          }
+        });
+      } else {
+        console.log('✅ updated_at column already exists');
+      }
+    });
+  });
 
   db.run(`CREATE TABLE IF NOT EXISTS quotes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
