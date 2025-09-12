@@ -67,16 +67,9 @@ const db = new sqlite3.Database('./users.db', (err) => {
   console.log('Connected to SQLite database.');
 });
 
-// Create tables in sequence
+// Create tables in sequence (only if they don't exist - preserve existing data)
 db.serialize(() => {
-  // Drop existing tables to recreate with new schema
-  db.run(`DROP TABLE IF EXISTS quotes`);
-  db.run(`DROP TABLE IF EXISTS projects`);
-  db.run(`DROP TABLE IF EXISTS vendors`);
-  db.run(`DROP TABLE IF EXISTS company_profile`);
-  db.run(`DROP TABLE IF EXISTS users`);
-
-  // Create users table with new schema
+  // Create users table with schema
   db.run(`CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     googleId TEXT UNIQUE,
