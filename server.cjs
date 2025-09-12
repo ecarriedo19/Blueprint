@@ -755,4 +755,35 @@ app.post('/api/users-legacy', (req, res) => {
   );
 });
 
+// Graceful shutdown mechanism to ensure data persistence
+process.on('SIGINT', () => {
+  console.log('\n🔄 Received SIGINT signal. Initiating graceful shutdown...');
+  
+  // Close the SQLite database connection to ensure all pending writes are flushed to disk
+  db.close((err) => {
+    if (err) {
+      console.error('❌ Error closing database connection:', err.message);
+      process.exit(1);
+    } else {
+      console.log('✅ Database connection closed. Server shutting down.');
+      process.exit(0);
+    }
+  });
+});
+
+// Handle other termination signals for completeness
+process.on('SIGTERM', () => {
+  console.log('\n🔄 Received SIGTERM signal. Initiating graceful shutdown...');
+  
+  db.close((err) => {
+    if (err) {
+      console.error('❌ Error closing database connection:', err.message);
+      process.exit(1);
+    } else {
+      console.log('✅ Database connection closed. Server shutting down.');
+      process.exit(0);
+    }
+  });
+});
+
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
