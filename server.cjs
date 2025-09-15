@@ -144,14 +144,48 @@ db.serialize(() => {
 
   db.run(`CREATE TABLE IF NOT EXISTS quotes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    project_name TEXT,
-    vendor_name TEXT,
-    amount REAL,
-    status TEXT,
-    user_id INTEGER,
+    quoteName TEXT NOT NULL,
+    status TEXT DEFAULT 'Draft',
+    timeToDevelop TEXT,
+    variancePercentage REAL DEFAULT 0,
+    quoteTotal REAL DEFAULT 0,
+    budget REAL DEFAULT 0,
+    user_id INTEGER NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users (id)
   )`);
+
+  // Migration: Update quotes table schema for new columns
+  db.all("PRAGMA table_info(quotes)", (err, columns) => {
+    if (err) {
+      console.error('Error checking quotes table schema:', err);
+      return;
+    }
+    
+    const columnNames = columns.map(col => col.name);
+    const requiredColumns = [
+      { name: 'quoteName', type: 'TEXT' },
+      { name: 'timeToDevelop', type: 'TEXT' },
+      { name: 'variancePercentage', type: 'REAL DEFAULT 0' },
+      { name: 'quoteTotal', type: 'REAL DEFAULT 0' },
+      { name: 'budget', type: 'REAL DEFAULT 0' },
+      { name: 'updated_at', type: 'DATETIME' }
+    ];
+    
+    requiredColumns.forEach(col => {
+      if (!columnNames.includes(col.name)) {
+        console.log(`Adding ${col.name} column to quotes table...`);
+        db.run(`ALTER TABLE quotes ADD COLUMN ${col.name} ${col.type}`, (alterErr) => {
+          if (alterErr) {
+            console.error(`Error adding ${col.name} column:`, alterErr);
+          } else {
+            console.log(`✅ ${col.name} column added successfully`);
+          }
+        });
+      }
+    });
+  });
 
   db.run(`CREATE TABLE IF NOT EXISTS vendors (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -769,6 +803,143 @@ app.patch('/api/projects/:projectId', requireAuth, (req, res) => {
             success: true, 
             message: 'Project updated successfully',
             project: updatedProject
+          });
+        }
+      );
+    }
+  );
+});
+
+// Quotes API Endpoints
+
+// Get all quotes for the authenticated user
+app.get('/api/quotes', requireAuth, (req, res) => {
+  console.log('🔍 GET /api/quotes - Fetching quotes for user:', req.session.userId);
+  
+  db.all(
+    `SELECT 
+      id, 
+      quoteName, 
+      status, 
+      timeToDevelop, 
+      variancePercentage, 
+      quoteTotal, 
+      budget, 
+      created_at, 
+      updated_at 
+    FROM quotes 
+    WHERE user_id = ? 
+    ORDER BY created_at DESC`,
+    [req.session.userId],
+    (err, quotes) => {
+      if (err) {
+        console.error('❌ Database error fetching quotes:', err);
+        return res.status(500).json({ 
+          success: false, 
+          error: 'Failed to fetch quotes',
+          details: err.message 
+        });
+      }
+
+      console.log(`✅ Found ${quotes.length} quotes for user ${req.session.userId}`);
+      res.json({
+        success: true,
+        quotes: quotes || [],
+        count: quotes ? quotes.length : 0
+      });
+    }
+  );
+});
+
+// Create a new quote for the authenticated user
+app.post('/api/quotes', requireAuth, (req, res) => {
+  console.log('🔍 POST /api/quotes - Request received for user:', req.session.userId);
+  console.log('Request body:', req.body);
+  
+  const { 
+    quoteName, 
+    status = 'Draft', 
+    timeToDevelop = '', 
+    variancePercentage = 0, 
+    quoteTotal = 0, 
+    budget = 0 
+  } = req.body;
+
+  // Validation
+  if (!quoteName || quoteName.trim() === '') {
+    console.log('❌ Validation failed: Quote name is required');
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Quote name is required' 
+    });
+  }
+
+  const userId = req.session.userId;
+  const now = new Date().toISOString();
+
+  db.run(
+    `INSERT INTO quotes (
+      quoteName, 
+      status, 
+      timeToDevelop, 
+      variancePercentage, 
+      quoteTotal, 
+      budget, 
+      user_id, 
+      created_at, 
+      updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      quoteName.trim(), 
+      status, 
+      timeToDevelop, 
+      variancePercentage, 
+      quoteTotal, 
+      budget, 
+      userId, 
+      now, 
+      now
+    ],
+    function (err) {
+      if (err) {
+        console.error('❌ Database error creating quote:', err);
+        return res.status(500).json({ 
+          success: false, 
+          error: 'Failed to create quote',
+          details: err.message 
+        });
+      }
+
+      // Fetch the newly created quote to return it
+      db.get(
+        `SELECT 
+          id, 
+          quoteName, 
+          status, 
+          timeToDevelop, 
+          variancePercentage, 
+          quoteTotal, 
+          budget, 
+          created_at, 
+          updated_at 
+        FROM quotes 
+        WHERE id = ?`,
+        [this.lastID],
+        (selectErr, quote) => {
+          if (selectErr) {
+            console.error('❌ Error fetching created quote:', selectErr);
+            return res.status(500).json({ 
+              success: false, 
+              error: 'Quote created but failed to retrieve',
+              details: selectErr.message 
+            });
+          }
+
+          console.log('✅ Quote created successfully:', quote);
+          res.status(201).json({
+            success: true,
+            message: 'Quote created successfully',
+            quote: quote
           });
         }
       );
