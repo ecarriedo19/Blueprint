@@ -20,7 +20,7 @@ const AiCopilotPage = () => {
     {
       id: '1',
       type: 'ai',
-      content: '🤖 Hello! I\'m your AI-powered construction planning assistant with **action-taking capabilities**. \n\nI can:\n• 📊 Answer questions using your project data and knowledge base\n• ⚡ **Create new projects** directly through chat\n• 💰 **Create new quotes** directly through chat\n• 🎯 Provide construction planning advice\n• 📚 Access vendor information and quotes\n\nTry saying: "Create a new project for renovating the downtown office" or "Create a quote for kitchen renovation - $25,000 budget" or ask me anything about construction planning!',
+      content: '🤖 Hello! I\'m your AI-powered construction planning assistant with **conversational capabilities**. \n\nI can:\n• 📊 Answer questions using your project data and knowledge base\n• ⚡ **Create new projects** through natural conversation\n• 💰 **Create new quotes** through natural conversation\n• 🎯 Provide construction planning advice\n• 📚 Access vendor information and quotes\n• 💬 **Ask for details** when I need more information\n\nJust tell me what you need! For example:\n• "Can you create a project for me?"\n• "I need a quote for kitchen renovation"\n• "Help me plan a bathroom remodel project"\n\nI\'ll guide you through providing any details I need!',
       timestamp: new Date()
     }
   ]);
@@ -73,13 +73,21 @@ const AiCopilotPage = () => {
 
       const prompt = `${context}
 
-User Question: "${userMessage.content}"
-
 You are a construction planning assistant with access to project management and quote tools. You can help users create and manage both projects and quotes.
 
-Please provide a helpful, detailed response. If the user is asking to create a project or mentions needing to start/track a new project, use the createProject function to help them. If the user is asking to create a quote or mentions needing to generate/prepare a quote, use the addQuote function to help them.
+CRITICAL CONVERSATIONAL RULES:
+1. If a user indicates intent to create a project or quote but has NOT provided all necessary information, DO NOT call the tool immediately.
+2. Instead, respond with a friendly, natural language question asking for the specific missing information.
+3. Only call createProject or addQuote functions when you have ALL required parameters from the user.
 
-If you reference any knowledge from the knowledge base, please cite it appropriately.`;
+For createProject, you need: name (required), and ideally: description, status, priority
+For addQuote, you need: quoteName (required), and ideally: status, timeToDevelop, variancePercentage, quoteTotal, budget
+
+EXAMPLES OF PROPER RESPONSES:
+- User: "Can you create a project for me?" → Ask: "I'd be happy to create a project for you! What would you like to name the project, and can you provide a brief description, status, and priority level?"
+- User: "I need a quote for kitchen renovation" → Ask: "I can create that quote for you! For the 'kitchen renovation' quote, what status should it have, what's the estimated time to develop, the quote total amount, and budget?"
+
+Please provide helpful, conversational responses. If you reference knowledge from the knowledge base, cite it appropriately.`;
 
       // Define available functions for the AI
       const tools = [
@@ -152,17 +160,58 @@ If you reference any knowledge from the knowledge base, please cite it appropria
         }
       ];
 
+      // Build conversation history for context (include recent messages)
+      const buildConversationHistory = () => {
+        const recentMessages = messages.slice(-6); // Get last 6 messages for context
+        const conversationHistory: any[] = [];
+        
+        // Add system message with context and rules
+        conversationHistory.push({
+          role: 'user',
+          parts: [{
+            text: prompt
+          }]
+        });
+        
+        // Add recent conversation history
+        recentMessages.forEach(msg => {
+          if (msg.type === 'user') {
+            conversationHistory.push({
+              role: 'user',
+              parts: [{
+                text: msg.content
+              }]
+            });
+          } else if (msg.type === 'ai') {
+            conversationHistory.push({
+              role: 'model',
+              parts: [{
+                text: msg.content
+              }]
+            });
+          }
+        });
+        
+        // Add the current user message
+        conversationHistory.push({
+          role: 'user',
+          parts: [{
+            text: userMessage.content
+          }]
+        });
+        
+        return conversationHistory;
+      };
+
+      const conversationHistory = buildConversationHistory();
+
       const geminiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          contents: [{
-            parts: [{
-              text: prompt
-            }]
-          }],
+          contents: conversationHistory,
           tools: tools,
           generationConfig: {
             temperature: 0.7,
@@ -426,7 +475,7 @@ ${context.substring(0, 500)}...
     <div className="space-y-6 h-full flex flex-col">
       <PageHeader 
         title="AI-Copilot" 
-        subtitle="Your action-taking AI assistant with access to your project data and the ability to create projects via chat."
+        subtitle="Your conversational AI assistant that guides you through creating projects and quotes with natural dialogue."
         size="lg"
       />
       
