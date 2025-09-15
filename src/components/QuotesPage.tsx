@@ -1,43 +1,65 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import PageHeader from './PageHeader';
 import Card from './Card';
 import Button from './Button';
+import QuoteModal from './QuoteModal';
 import { useQuotes, Quote } from '../contexts/QuoteContext';
 
 const QuotesPage = () => {
-  const { quotes, loading, error, addQuote } = useQuotes();
-  const [showCreateForm, setShowCreateForm] = useState(false);
-  const [formData, setFormData] = useState({
-    quoteName: '',
-    status: 'Draft',
-    timeToDevelop: '',
-    variancePercentage: 0,
-    quoteTotal: 0,
-    budget: 0
+  const { quotes, loading, error, deleteQuote } = useQuotes();
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [quoteToEdit, setQuoteToEdit] = useState<Quote | null>(null);
+  const [toast, setToast] = useState<{ message: string; isVisible: boolean; type: 'success' | 'error' }>({ 
+    message: '', 
+    isVisible: false, 
+    type: 'success' 
   });
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleCreateQuote = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.quoteName.trim()) return;
+  // Handle toast notifications
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ message, isVisible: true, type });
+    setTimeout(() => {
+      setToast(prev => ({ ...prev, isVisible: false }));
+    }, 3000);
+  };
 
-    setIsSubmitting(true);
-    try {
-      await addQuote(formData);
-      setFormData({
-        quoteName: '',
-        status: 'Draft',
-        timeToDevelop: '',
-        variancePercentage: 0,
-        quoteTotal: 0,
-        budget: 0
-      });
-      setShowCreateForm(false);
-    } catch (err) {
-      console.error('Failed to create quote:', err);
-    } finally {
-      setIsSubmitting(false);
+  const hideToast = () => {
+    setToast(prev => ({ ...prev, isVisible: false }));
+  };
+
+  // Handle opening modal for creating new quote
+  const handleCreateQuote = () => {
+    setQuoteToEdit(null);
+    setIsModalOpen(true);
+  };
+
+  // Handle opening modal for editing existing quote
+  const handleEditQuote = (quote: Quote) => {
+    setQuoteToEdit(quote);
+    setIsModalOpen(true);
+  };
+
+  // Handle deleting a quote
+  const handleDeleteQuote = async (quote: Quote) => {
+    const confirmDelete = window.confirm(
+      `Are you sure you want to delete the quote "${quote.quoteName}"? This action cannot be undone.`
+    );
+    
+    if (confirmDelete) {
+      try {
+        await deleteQuote(quote.id);
+        showToast('Quote deleted successfully!');
+      } catch (error) {
+        console.error('Failed to delete quote:', error);
+        showToast('Failed to delete quote. Please try again.', 'error');
+      }
     }
+  };
+
+  // Handle closing modal and resetting edit state
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setQuoteToEdit(null);
   };
 
   const formatCurrency = (amount: number) => {
@@ -53,20 +75,7 @@ const QuotesPage = () => {
     return `${percentage.toFixed(1)}%`;
   };
 
-  const getStatusBadgeClass = (status: string) => {
-    switch (status.toLowerCase()) {
-      case 'draft':
-        return 'bg-gray-500/20 text-gray-300 border-gray-500/30';
-      case 'pending':
-        return 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30';
-      case 'approved':
-        return 'bg-green-500/20 text-green-300 border-green-500/30';
-      case 'rejected':
-        return 'bg-red-500/20 text-red-300 border-red-500/30';
-      default:
-        return 'bg-blue-500/20 text-blue-300 border-blue-500/30';
-    }
-  };
+
 
   // Empty State Component
   const EmptyState = () => (
@@ -82,7 +91,7 @@ const QuotesPage = () => {
           You don't have any quotes yet. Create your first quote to start managing construction project estimates and costs.
         </p>
         <Button
-          onClick={() => setShowCreateForm(true)}
+          onClick={handleCreateQuote}
           size="lg"
           className="px-8"
         >
@@ -92,121 +101,25 @@ const QuotesPage = () => {
     </Card>
   );
 
-  // Create Quote Form Component
-  const CreateQuoteForm = () => (
-    <Card variant="glass" className="mb-6">
-      <form onSubmit={handleCreateQuote} className="space-y-6">
-        <div className="flex items-center justify-between mb-6">
-          <h3 className="text-xl font-bold text-white">Create New Quote</h3>
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={() => setShowCreateForm(false)}
-            size="sm"
-          >
-            Cancel
-          </Button>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">
-              Quote Name *
-            </label>
-            <input
-              type="text"
-              value={formData.quoteName}
-              onChange={(e) => setFormData({ ...formData, quoteName: e.target.value })}
-              className="w-full px-4 py-3 bg-slate-800/50 border border-slate-600/50 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="e.g., Downtown Office Building"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">
-              Status
-            </label>
-            <select
-              value={formData.status}
-              onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-              className="w-full px-4 py-3 bg-slate-800/50 border border-slate-600/50 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="Draft">Draft</option>
-              <option value="Pending">Pending</option>
-              <option value="Approved">Approved</option>
-              <option value="Rejected">Rejected</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">
-              Time to Develop
-            </label>
-            <input
-              type="text"
-              value={formData.timeToDevelop}
-              onChange={(e) => setFormData({ ...formData, timeToDevelop: e.target.value })}
-              className="w-full px-4 py-3 bg-slate-800/50 border border-slate-600/50 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="e.g., 8-12 weeks"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">
-              Variance Percentage
-            </label>
-            <input
-              type="number"
-              step="0.1"
-              value={formData.variancePercentage}
-              onChange={(e) => setFormData({ ...formData, variancePercentage: parseFloat(e.target.value) || 0 })}
-              className="w-full px-4 py-3 bg-slate-800/50 border border-slate-600/50 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="0.0"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">
-              Quote Total
-            </label>
-            <input
-              type="number"
-              step="1000"
-              value={formData.quoteTotal}
-              onChange={(e) => setFormData({ ...formData, quoteTotal: parseFloat(e.target.value) || 0 })}
-              className="w-full px-4 py-3 bg-slate-800/50 border border-slate-600/50 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="0"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">
-              Budget
-            </label>
-            <input
-              type="number"
-              step="1000"
-              value={formData.budget}
-              onChange={(e) => setFormData({ ...formData, budget: parseFloat(e.target.value) || 0 })}
-              className="w-full px-4 py-3 bg-slate-800/50 border border-slate-600/50 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="0"
-            />
-          </div>
-        </div>
-
-        <div className="flex gap-4 pt-4">
-          <Button
-            type="submit"
-            loading={isSubmitting}
-            disabled={!formData.quoteName.trim()}
-          >
-            Create Quote
-          </Button>
-        </div>
-      </form>
-    </Card>
-  );
+  // Add status badge for new statuses
+  const getStatusBadgeClassEnhanced = (status: string) => {
+    switch (status.toLowerCase()) {
+      case 'draft':
+        return 'bg-gray-500/20 text-gray-300 border-gray-500/30';
+      case 'pending':
+        return 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30';
+      case 'approved':
+        return 'bg-green-500/20 text-green-300 border-green-500/30';
+      case 'rejected':
+        return 'bg-red-500/20 text-red-300 border-red-500/30';
+      case 'client to be review':
+        return 'bg-orange-500/20 text-orange-300 border-orange-500/30';
+      case 'working on it':
+        return 'bg-blue-500/20 text-blue-300 border-blue-500/30';
+      default:
+        return 'bg-blue-500/20 text-blue-300 border-blue-500/30';
+    }
+  };
 
   // Quotes Table Component
   const QuotesTable = () => (
@@ -233,6 +146,9 @@ const QuotesPage = () => {
               <th className="text-right py-4 px-4 text-sm font-semibold text-slate-300 uppercase tracking-wider">
                 Budget
               </th>
+              <th className="text-center py-4 px-4 text-sm font-semibold text-slate-300 uppercase tracking-wider">
+                Actions
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -240,7 +156,7 @@ const QuotesPage = () => {
               <tr
                 key={quote.id}
                 className={`
-                  border-b border-slate-700/30 hover:bg-white/5 transition-colors duration-200
+                  group border-b border-slate-700/30 hover:bg-white/5 transition-colors duration-200
                   ${index === quotes.length - 1 ? 'border-b-0' : ''}
                 `}
               >
@@ -256,7 +172,7 @@ const QuotesPage = () => {
                   <span
                     className={`
                       inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border
-                      ${getStatusBadgeClass(quote.status)}
+                      ${getStatusBadgeClassEnhanced(quote.status)}
                     `}
                   >
                     {quote.status}
@@ -282,6 +198,28 @@ const QuotesPage = () => {
                     {formatCurrency(quote.budget)}
                   </span>
                 </td>
+                <td className="py-4 px-4">
+                  <div className="flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                    <button
+                      onClick={() => handleEditQuote(quote)}
+                      className="p-2 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors duration-200"
+                      title="Edit quote"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => handleDeleteQuote(quote)}
+                      className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors duration-200"
+                      title="Delete quote"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </div>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -292,6 +230,36 @@ const QuotesPage = () => {
 
   return (
     <div className="space-y-6">
+      {/* Toast Notification */}
+      {toast.isVisible && (
+        <div className="fixed top-4 right-4 z-50 animate-fade-in">
+          <Card variant="glass" className={`p-4 ${toast.type === 'error' ? 'border-red-500/50 bg-red-500/10' : 'border-green-500/50 bg-green-500/10'}`}>
+            <div className="flex items-center gap-3">
+              <div className={`w-6 h-6 ${toast.type === 'error' ? 'text-red-400' : 'text-green-400'}`}>
+                {toast.type === 'error' ? (
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                ) : (
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+              </div>
+              <p className={toast.type === 'error' ? 'text-red-300' : 'text-green-300'}>{toast.message}</p>
+              <button 
+                onClick={hideToast}
+                className={`ml-2 ${toast.type === 'error' ? 'text-red-400 hover:text-red-300' : 'text-green-400 hover:text-green-300'}`}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </Card>
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <PageHeader 
           title="Quotes" 
@@ -299,9 +267,9 @@ const QuotesPage = () => {
           size="lg"
         />
         
-        {quotes.length > 0 && !showCreateForm && (
+        {quotes.length > 0 && (
           <Button
-            onClick={() => setShowCreateForm(true)}
+            onClick={handleCreateQuote}
             className="shrink-0"
           >
             + New Quote
@@ -322,8 +290,6 @@ const QuotesPage = () => {
         </Card>
       )}
 
-      {showCreateForm && <CreateQuoteForm />}
-
       {loading ? (
         <Card variant="glass" className="text-center py-12">
           <div className="flex items-center justify-center gap-3">
@@ -331,11 +297,19 @@ const QuotesPage = () => {
             <span className="text-slate-300">Loading quotes...</span>
           </div>
         </Card>
-      ) : quotes.length === 0 && !showCreateForm ? (
+      ) : quotes.length === 0 ? (
         <EmptyState />
-      ) : quotes.length > 0 ? (
+      ) : (
         <QuotesTable />
-      ) : null}
+      )}
+
+      {/* Quote Modal - Create/Edit */}
+      <QuoteModal 
+        isOpen={isModalOpen}
+        onClose={handleCloseModal}
+        onSuccess={showToast}
+        quoteToEdit={quoteToEdit}
+      />
     </div>
   );
 };

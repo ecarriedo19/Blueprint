@@ -24,6 +24,15 @@ interface QuoteContextType {
     quoteTotal?: number;
     budget?: number;
   }) => Promise<Quote>;
+  updateQuote: (quoteId: number, updatedData: {
+    quoteName: string;
+    status?: string;
+    timeToDevelop?: string;
+    variancePercentage?: number;
+    quoteTotal?: number;
+    budget?: number;
+  }) => Promise<Quote>;
+  deleteQuote: (quoteId: number) => Promise<void>;
   refreshQuotes: () => Promise<void>;
 }
 
@@ -121,6 +130,82 @@ export const QuoteProvider: React.FC<QuoteProviderProps> = ({ children }) => {
     }
   }, []);
 
+  const updateQuote = useCallback(async (quoteId: number, updatedData: {
+    quoteName: string;
+    status?: string;
+    timeToDevelop?: string;
+    variancePercentage?: number;
+    quoteTotal?: number;
+    budget?: number;
+  }): Promise<Quote> => {
+    setError(null);
+
+    try {
+      const response = await fetch(`http://localhost:4000/api/quotes/${quoteId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify(updatedData),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (data.success && data.quote) {
+        // Update the quote in the current list
+        setQuotes(prevQuotes => 
+          prevQuotes.map(quote => 
+            quote.id === quoteId ? data.quote : quote
+          )
+        );
+        return data.quote;
+      } else {
+        throw new Error(data.error || 'Failed to update quote');
+      }
+    } catch (err) {
+      console.error('Error updating quote:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
+      setError(errorMessage);
+      throw new Error(errorMessage);
+    }
+  }, []);
+
+  const deleteQuote = useCallback(async (quoteId: number): Promise<void> => {
+    setError(null);
+
+    try {
+      const response = await fetch(`http://localhost:4000/api/quotes/${quoteId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (data.success) {
+        // Remove the quote from the current list
+        setQuotes(prevQuotes => 
+          prevQuotes.filter(quote => quote.id !== quoteId)
+        );
+      } else {
+        throw new Error(data.error || 'Failed to delete quote');
+      }
+    } catch (err) {
+      console.error('Error deleting quote:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
+      setError(errorMessage);
+      throw new Error(errorMessage);
+    }
+  }, []);
+
   const refreshQuotes = useCallback(async () => {
     await fetchQuotes();
   }, [fetchQuotes]);
@@ -135,6 +220,8 @@ export const QuoteProvider: React.FC<QuoteProviderProps> = ({ children }) => {
     loading,
     error,
     addQuote,
+    updateQuote,
+    deleteQuote,
     refreshQuotes,
   };
 

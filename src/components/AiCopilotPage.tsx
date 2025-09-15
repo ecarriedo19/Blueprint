@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useProjects } from '../contexts/ProjectState';
+import { useQuotes } from '../contexts/QuoteContext';
 import PageHeader from './PageHeader';
 import Card from './Card';
 import Button from './Button';
@@ -14,11 +15,12 @@ interface Message {
 
 const AiCopilotPage = () => {
   const { addProject } = useProjects();
+  const { addQuote } = useQuotes();
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
       type: 'ai',
-      content: '🤖 Hello! I\'m your AI-powered construction planning assistant with **action-taking capabilities**. \n\nI can:\n• 📊 Answer questions using your project data and knowledge base\n• ⚡ **Create new projects** directly through chat\n• 🎯 Provide construction planning advice\n• 📚 Access vendor information and quotes\n\nTry saying: "Create a new project for renovating the downtown office" or ask me anything about construction planning!',
+      content: '🤖 Hello! I\'m your AI-powered construction planning assistant with **action-taking capabilities**. \n\nI can:\n• 📊 Answer questions using your project data and knowledge base\n• ⚡ **Create new projects** directly through chat\n• 💰 **Create new quotes** directly through chat\n• 🎯 Provide construction planning advice\n• 📚 Access vendor information and quotes\n\nTry saying: "Create a new project for renovating the downtown office" or "Create a quote for kitchen renovation - $25,000 budget" or ask me anything about construction planning!',
       timestamp: new Date()
     }
   ]);
@@ -73,9 +75,9 @@ const AiCopilotPage = () => {
 
 User Question: "${userMessage.content}"
 
-You are a construction planning assistant with access to project management tools. You can help users create and manage projects.
+You are a construction planning assistant with access to project management and quote tools. You can help users create and manage both projects and quotes.
 
-Please provide a helpful, detailed response. If the user is asking to create a project or mentions needing to start/track a new project, use the createProject function to help them.
+Please provide a helpful, detailed response. If the user is asking to create a project or mentions needing to start/track a new project, use the createProject function to help them. If the user is asking to create a quote or mentions needing to generate/prepare a quote, use the addQuote function to help them.
 
 If you reference any knowledge from the knowledge base, please cite it appropriately.`;
 
@@ -109,6 +111,41 @@ If you reference any knowledge from the knowledge base, please cite it appropria
                   }
                 },
                 required: ["name"]
+              }
+            },
+            {
+              name: "addQuote",
+              description: "Create a new quote for the user. Use this when the user asks to create, generate, prepare, or add a quote.",
+              parameters: {
+                type: "object",
+                properties: {
+                  quoteName: {
+                    type: "string",
+                    description: "The name or title of the quote"
+                  },
+                  status: {
+                    type: "string",
+                    description: "The status of the quote",
+                    enum: ["Draft", "Pending", "Approved", "Rejected", "Completed"]
+                  },
+                  timeToDevelop: {
+                    type: "string",
+                    description: "The estimated time to develop/complete the project (e.g., '2 weeks', '1 month')"
+                  },
+                  variancePercentage: {
+                    type: "number",
+                    description: "The variance percentage for the quote (as a decimal, e.g., 0.1 for 10%)"
+                  },
+                  quoteTotal: {
+                    type: "number",
+                    description: "The total amount of the quote"
+                  },
+                  budget: {
+                    type: "number",
+                    description: "The budget for the quote"
+                  }
+                },
+                required: ["quoteName"]
               }
             }
           ]
@@ -211,6 +248,50 @@ Is there anything else you'd like me to help you with for this project?`;
 I encountered an error while trying to create the project: ${error instanceof Error ? error.message : 'Unknown error'}
 
 Please try again or create the project manually from the Projects page.`;
+          }
+        } else if (functionName === 'addQuote') {
+          try {
+            // Debug: Log the function call arguments
+            console.log('Quote function call args:', args);
+            console.log('Args type:', typeof args);
+            console.log('Args keys:', Object.keys(args || {}));
+            
+            // Create the quote using our context
+            const quoteData = {
+              quoteName: args.quoteName || 'New Quote',
+              status: args.status || 'Draft',
+              timeToDevelop: args.timeToDevelop || '',
+              variancePercentage: args.variancePercentage || 0,
+              quoteTotal: args.quoteTotal || 0,
+              budget: args.budget || 0
+            };
+            
+            console.log('Quote data being sent:', quoteData);
+            
+            const newQuote = await addQuote(quoteData);
+            
+            // Generate response about successful creation
+            aiResponseText = `✅ **Quote Created Successfully!**
+
+I've created a new quote for you:
+
+**Quote Name:** ${newQuote.quoteName}
+**Status:** ${newQuote.status}
+**Time to Develop:** ${newQuote.timeToDevelop || 'Not specified'}
+**Variance:** ${newQuote.variancePercentage}%
+**Quote Total:** $${newQuote.quoteTotal.toLocaleString()}
+**Budget:** $${newQuote.budget.toLocaleString()}
+
+The quote has been added to your Quotes page where you can manage it further. You can update the status, amounts, or add more details anytime.
+
+Is there anything else you'd like me to help you with for this quote?`;
+            
+          } catch (error) {
+            aiResponseText = `❌ **Failed to Create Quote**
+
+I encountered an error while trying to create the quote: ${error instanceof Error ? error.message : 'Unknown error'}
+
+Please try again or create the quote manually from the Quotes page.`;
           }
         }
       } else {

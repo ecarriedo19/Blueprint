@@ -947,6 +947,215 @@ app.post('/api/quotes', requireAuth, (req, res) => {
   );
 });
 
+// Update an existing quote for the authenticated user
+app.put('/api/quotes/:id', requireAuth, (req, res) => {
+  console.log('🔍 PUT /api/quotes/:id - Request received for user:', req.session.userId);
+  console.log('Quote ID:', req.params.id);
+  console.log('Request body:', req.body);
+  
+  const quoteId = parseInt(req.params.id);
+  const { 
+    quoteName, 
+    status, 
+    timeToDevelop, 
+    variancePercentage, 
+    quoteTotal, 
+    budget 
+  } = req.body;
+
+  // Validation
+  if (!quoteName || quoteName.trim() === '') {
+    console.log('❌ Validation failed: Quote name is required');
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Quote name is required' 
+    });
+  }
+
+  if (!quoteId || isNaN(quoteId)) {
+    console.log('❌ Validation failed: Invalid quote ID');
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Invalid quote ID' 
+    });
+  }
+
+  const userId = req.session.userId;
+  const now = new Date().toISOString();
+
+  // First check if the quote exists and belongs to the user
+  db.get(
+    'SELECT id FROM quotes WHERE id = ? AND user_id = ?',
+    [quoteId, userId],
+    (err, existingQuote) => {
+      if (err) {
+        console.error('❌ Database error checking quote ownership:', err);
+        return res.status(500).json({ 
+          success: false, 
+          error: 'Failed to verify quote ownership',
+          details: err.message 
+        });
+      }
+
+      if (!existingQuote) {
+        console.log('❌ Quote not found or access denied');
+        return res.status(404).json({ 
+          success: false, 
+          error: 'Quote not found or access denied' 
+        });
+      }
+
+      // Update the quote
+      db.run(
+        `UPDATE quotes SET 
+          quoteName = ?, 
+          status = ?, 
+          timeToDevelop = ?, 
+          variancePercentage = ?, 
+          quoteTotal = ?, 
+          budget = ?, 
+          updated_at = ?
+        WHERE id = ? AND user_id = ?`,
+        [
+          quoteName.trim(), 
+          status || 'Draft', 
+          timeToDevelop || '', 
+          variancePercentage || 0, 
+          quoteTotal || 0, 
+          budget || 0, 
+          now,
+          quoteId, 
+          userId
+        ],
+        function (err) {
+          if (err) {
+            console.error('❌ Database error updating quote:', err);
+            return res.status(500).json({ 
+              success: false, 
+              error: 'Failed to update quote',
+              details: err.message 
+            });
+          }
+
+          if (this.changes === 0) {
+            console.log('❌ No rows were updated');
+            return res.status(404).json({ 
+              success: false, 
+              error: 'Quote not found or no changes made' 
+            });
+          }
+
+          // Fetch the updated quote to return it
+          db.get(
+            `SELECT 
+              id, 
+              quoteName, 
+              status, 
+              timeToDevelop, 
+              variancePercentage, 
+              quoteTotal, 
+              budget, 
+              created_at, 
+              updated_at 
+            FROM quotes 
+            WHERE id = ?`,
+            [quoteId],
+            (selectErr, updatedQuote) => {
+              if (selectErr) {
+                console.error('❌ Error fetching updated quote:', selectErr);
+                return res.status(500).json({ 
+                  success: false, 
+                  error: 'Quote updated but failed to retrieve',
+                  details: selectErr.message 
+                });
+              }
+
+              console.log('✅ Quote updated successfully:', updatedQuote);
+              res.json({
+                success: true,
+                message: 'Quote updated successfully',
+                quote: updatedQuote
+              });
+            }
+          );
+        }
+      );
+    }
+  );
+});
+
+// Delete a quote for the authenticated user
+app.delete('/api/quotes/:id', requireAuth, (req, res) => {
+  console.log('🔍 DELETE /api/quotes/:id - Request received for user:', req.session.userId);
+  console.log('Quote ID:', req.params.id);
+  
+  const quoteId = parseInt(req.params.id);
+  const userId = req.session.userId;
+
+  if (!quoteId || isNaN(quoteId)) {
+    console.log('❌ Validation failed: Invalid quote ID');
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Invalid quote ID' 
+    });
+  }
+
+  // First check if the quote exists and belongs to the user
+  db.get(
+    'SELECT id, quoteName FROM quotes WHERE id = ? AND user_id = ?',
+    [quoteId, userId],
+    (err, existingQuote) => {
+      if (err) {
+        console.error('❌ Database error checking quote ownership:', err);
+        return res.status(500).json({ 
+          success: false, 
+          error: 'Failed to verify quote ownership',
+          details: err.message 
+        });
+      }
+
+      if (!existingQuote) {
+        console.log('❌ Quote not found or access denied');
+        return res.status(404).json({ 
+          success: false, 
+          error: 'Quote not found or access denied' 
+        });
+      }
+
+      // Delete the quote
+      db.run(
+        'DELETE FROM quotes WHERE id = ? AND user_id = ?',
+        [quoteId, userId],
+        function (err) {
+          if (err) {
+            console.error('❌ Database error deleting quote:', err);
+            return res.status(500).json({ 
+              success: false, 
+              error: 'Failed to delete quote',
+              details: err.message 
+            });
+          }
+
+          if (this.changes === 0) {
+            console.log('❌ No rows were deleted');
+            return res.status(404).json({ 
+              success: false, 
+              error: 'Quote not found' 
+            });
+          }
+
+          console.log(`✅ Quote "${existingQuote.quoteName}" deleted successfully`);
+          res.json({
+            success: true,
+            message: 'Quote deleted successfully',
+            deletedQuote: existingQuote
+          });
+        }
+      );
+    }
+  );
+});
+
 // Endpoint to add/find user (legacy endpoint, keeping for compatibility)
 app.post('/api/users-legacy', (req, res) => {
   const { id, email, name, provider } = req.body;
