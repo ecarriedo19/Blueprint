@@ -140,6 +140,15 @@ Please provide helpful, conversational responses. If you reference knowledge fro
                     type: "string",
                     description: "The estimated time to develop/complete the project (e.g., '2 weeks', '1 month')"
                   },
+                  timeToDevelopValue: {
+                    type: "number",
+                    description: "The numeric value for time to develop (e.g., 2 for '2 weeks')"
+                  },
+                  timeToDevelopUnit: {
+                    type: "string",
+                    description: "The time unit for development duration",
+                    enum: ["Days", "Weeks", "Months"]
+                  },
                   variancePercentage: {
                     type: "number",
                     description: "The variance percentage for the quote (as a decimal, e.g., 0.1 for 10%)"
@@ -310,6 +319,8 @@ Please try again or create the project manually from the Projects page.`;
               quoteName: args.quoteName || 'New Quote',
               status: args.status || 'Draft',
               timeToDevelop: args.timeToDevelop || '',
+              timeToDevelopValue: args.timeToDevelopValue || 0,
+              timeToDevelopUnit: args.timeToDevelopUnit || 'Weeks',
               variancePercentage: args.variancePercentage || 0,
               quoteTotal: args.quoteTotal || 0,
               budget: args.budget || 0
@@ -326,7 +337,7 @@ I've created a new quote for you:
 
 **Quote Name:** ${newQuote.quoteName}
 **Status:** ${newQuote.status}
-**Time to Develop:** ${newQuote.timeToDevelop || 'Not specified'}
+**Time to Develop:** ${newQuote.timeToDevelopValue && newQuote.timeToDevelopUnit ? `${newQuote.timeToDevelopValue} ${newQuote.timeToDevelopUnit}` : (newQuote.timeToDevelop || 'Not specified')}
 **Variance:** ${newQuote.variancePercentage}%
 **Quote Total:** $${newQuote.quoteTotal.toLocaleString()}
 **Budget:** $${newQuote.budget.toLocaleString()}

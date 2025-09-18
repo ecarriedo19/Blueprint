@@ -4,7 +4,9 @@ export interface Quote {
   id: number;
   quoteName: string;
   status: string;
-  timeToDevelop: string;
+  timeToDevelop: string; // Keep for backward compatibility
+  timeToDevelopValue: number;
+  timeToDevelopUnit: string;
   variancePercentage: number;
   quoteTotal: number;
   budget: number;
@@ -20,6 +22,8 @@ interface QuoteContextType {
     quoteName: string;
     status?: string;
     timeToDevelop?: string;
+    timeToDevelopValue?: number;
+    timeToDevelopUnit?: string;
     variancePercentage?: number;
     quoteTotal?: number;
     budget?: number;
@@ -28,6 +32,8 @@ interface QuoteContextType {
     quoteName: string;
     status?: string;
     timeToDevelop?: string;
+    timeToDevelopValue?: number;
+    timeToDevelopUnit?: string;
     variancePercentage?: number;
     quoteTotal?: number;
     budget?: number;
@@ -60,21 +66,30 @@ export const QuoteProvider: React.FC<QuoteProviderProps> = ({ children }) => {
     setError(null);
 
     try {
+      console.log('Fetching quotes from:', 'http://localhost:4000/api/quotes');
       const response = await fetch('http://localhost:4000/api/quotes', {
         credentials: 'include'
       });
 
+      console.log('Response status:', response.status);
+      console.log('Response ok:', response.ok);
+
       if (!response.ok) {
         if (response.status === 401) {
           // User not authenticated, don't treat as error
+          console.log('User not authenticated, clearing quotes');
           setQuotes([]);
           setLoading(false);
           return;
         }
-        throw new Error(`Failed to fetch quotes: ${response.status}`);
+        const errorText = await response.text();
+        console.error('Server response error:', errorText);
+        throw new Error(`Server error (${response.status}): ${errorText || 'Unknown server error'}`);
       }
 
       const data = await response.json();
+      console.log('Response data:', data);
+      
       if (data.success) {
         setQuotes(data.quotes || []);
       } else {
@@ -82,7 +97,18 @@ export const QuoteProvider: React.FC<QuoteProviderProps> = ({ children }) => {
       }
     } catch (err) {
       console.error('Error fetching quotes:', err);
-      setError(err instanceof Error ? err.message : 'Unknown error occurred');
+      
+      // Provide more specific error messages
+      let errorMessage = 'Unknown error occurred';
+      if (err instanceof Error) {
+        if (err.message.includes('fetch')) {
+          errorMessage = 'Cannot connect to server. Please make sure the backend is running on port 4000.';
+        } else {
+          errorMessage = err.message;
+        }
+      }
+      
+      setError(errorMessage);
       setQuotes([]);
     } finally {
       setLoading(false);
@@ -93,6 +119,8 @@ export const QuoteProvider: React.FC<QuoteProviderProps> = ({ children }) => {
     quoteName: string;
     status?: string;
     timeToDevelop?: string;
+    timeToDevelopValue?: number;
+    timeToDevelopUnit?: string;
     variancePercentage?: number;
     quoteTotal?: number;
     budget?: number;
@@ -134,6 +162,8 @@ export const QuoteProvider: React.FC<QuoteProviderProps> = ({ children }) => {
     quoteName: string;
     status?: string;
     timeToDevelop?: string;
+    timeToDevelopValue?: number;
+    timeToDevelopUnit?: string;
     variancePercentage?: number;
     quoteTotal?: number;
     budget?: number;

@@ -16,7 +16,9 @@ const QuoteModal: React.FC<QuoteModalProps> = ({ isOpen, onClose, onSuccess, quo
   const [formData, setFormData] = useState({
     quoteName: '',
     status: 'Client to be review',
-    timeToDevelop: '',
+    timeToDevelop: '', // Keep for backward compatibility
+    timeToDevelopValue: 1, // Default to 1 instead of 0
+    timeToDevelopUnit: 'weeks', // Use lowercase for consistency
     variancePercentage: 0,
     quoteTotal: 0,
     budget: 0
@@ -27,10 +29,26 @@ const QuoteModal: React.FC<QuoteModalProps> = ({ isOpen, onClose, onSuccess, quo
     if (isOpen) {
       if (quoteToEdit) {
         // Edit mode - populate with existing data
+        // Handle backward compatibility: parse timeToDevelop if new fields are not available
+        let parsedValue = quoteToEdit.timeToDevelopValue || 1;
+        let parsedUnit = quoteToEdit.timeToDevelopUnit || 'weeks';
+        
+        if ((!quoteToEdit.timeToDevelopValue || quoteToEdit.timeToDevelopValue === 0) && quoteToEdit.timeToDevelop) {
+          // Parse existing timeToDevelop string (e.g., "8 weeks", "3 months", "14 days")
+          const match = quoteToEdit.timeToDevelop.match(/(\d+)\s*(day|week|month)s?/i);
+          if (match) {
+            parsedValue = parseInt(match[1]);
+            const unit = match[2].toLowerCase();
+            parsedUnit = unit === 'day' ? 'days' : unit === 'week' ? 'weeks' : 'months';
+          }
+        }
+        
         setFormData({
           quoteName: quoteToEdit.quoteName,
           status: quoteToEdit.status,
           timeToDevelop: quoteToEdit.timeToDevelop,
+          timeToDevelopValue: parsedValue,
+          timeToDevelopUnit: parsedUnit,
           variancePercentage: quoteToEdit.variancePercentage,
           quoteTotal: quoteToEdit.quoteTotal,
           budget: quoteToEdit.budget
@@ -41,6 +59,8 @@ const QuoteModal: React.FC<QuoteModalProps> = ({ isOpen, onClose, onSuccess, quo
           quoteName: '',
           status: 'Client to be review',
           timeToDevelop: '',
+          timeToDevelopValue: 0,
+          timeToDevelopUnit: 'Weeks',
           variancePercentage: 0,
           quoteTotal: 0,
           budget: 0
@@ -132,11 +152,12 @@ const QuoteModal: React.FC<QuoteModalProps> = ({ isOpen, onClose, onSuccess, quo
 
   return (
     <div 
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm overflow-y-auto"
       onClick={handleOverlayClick}
     >
-      <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <Card variant="glass" className="relative animate-fade-in">
+      <div className="min-h-screen flex items-center justify-center p-4 py-8">
+        <div className="w-full max-w-2xl my-8">
+          <Card variant="glass" className="relative animate-fade-in z-50">
           {/* Modal Header */}
           <div className="flex items-center justify-between mb-8">
             <div>
@@ -199,17 +220,29 @@ const QuoteModal: React.FC<QuoteModalProps> = ({ isOpen, onClose, onSuccess, quo
               </div>
 
               {/* Time to Develop */}
-              <div>
+              <div className="md:col-span-2">
                 <label className="block text-sm font-semibold text-slate-300 mb-3">
                   Time to Develop
                 </label>
-                <input
-                  type="text"
-                  value={formData.timeToDevelop}
-                  onChange={(e) => handleInputChange('timeToDevelop', e.target.value)}
-                  className="w-full px-4 py-4 bg-slate-800/50 border border-slate-600/50 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                  placeholder="e.g., 8-12 weeks"
-                />
+                <div className="flex gap-2 max-w-sm">
+                  <input
+                    type="number"
+                    min="1"
+                    value={formData.timeToDevelopValue || ''}
+                    onChange={(e) => handleInputChange('timeToDevelopValue', e.target.value ? parseInt(e.target.value) : 1)}
+                    className="flex-1 px-4 py-4 bg-slate-800/50 border border-slate-600/50 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                    placeholder="12"
+                  />
+                  <select
+                    value={formData.timeToDevelopUnit || 'weeks'}
+                    onChange={(e) => handleInputChange('timeToDevelopUnit', e.target.value)}
+                    className="px-4 py-4 bg-slate-800/50 border border-slate-600/50 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 min-w-[120px]"
+                  >
+                    <option value="days">Days</option>
+                    <option value="weeks">Weeks</option>
+                    <option value="months">Months</option>
+                  </select>
+                </div>
               </div>
 
               {/* Variance Percentage */}
@@ -217,7 +250,7 @@ const QuoteModal: React.FC<QuoteModalProps> = ({ isOpen, onClose, onSuccess, quo
                 <label className="block text-sm font-semibold text-slate-300 mb-3">
                   Variance Percentage
                 </label>
-                <div className="relative">
+                <div className="flex items-center">
                   <input
                     type="number"
                     step="0.1"
@@ -225,10 +258,12 @@ const QuoteModal: React.FC<QuoteModalProps> = ({ isOpen, onClose, onSuccess, quo
                     max="100"
                     value={formData.variancePercentage}
                     onChange={(e) => handleInputChange('variancePercentage', parseFloat(e.target.value) || 0)}
-                    className="w-full px-4 py-4 pr-12 bg-slate-800/50 border border-slate-600/50 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                    className="flex-1 px-4 py-4 bg-slate-800/50 border border-slate-600/50 rounded-l-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                     placeholder="0.0"
                   />
-                  <span className="absolute right-4 top-1/2 transform -translate-y-1/2 text-slate-400">%</span>
+                  <div className="px-4 py-4 bg-slate-700/50 border border-l-0 border-slate-600/50 rounded-r-xl text-slate-400 font-medium">
+                    %
+                  </div>
                 </div>
               </div>
 
@@ -241,7 +276,7 @@ const QuoteModal: React.FC<QuoteModalProps> = ({ isOpen, onClose, onSuccess, quo
                   <span className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400">$</span>
                   <input
                     type="number"
-                    step="1000"
+                    step="0.01"
                     min="0"
                     value={formData.quoteTotal}
                     onChange={(e) => handleInputChange('quoteTotal', parseFloat(e.target.value) || 0)}
@@ -260,7 +295,7 @@ const QuoteModal: React.FC<QuoteModalProps> = ({ isOpen, onClose, onSuccess, quo
                   <span className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400">$</span>
                   <input
                     type="number"
-                    step="1000"
+                    step="0.01"
                     min="0"
                     value={formData.budget}
                     onChange={(e) => handleInputChange('budget', parseFloat(e.target.value) || 0)}
@@ -297,6 +332,7 @@ const QuoteModal: React.FC<QuoteModalProps> = ({ isOpen, onClose, onSuccess, quo
             </div>
           </form>
         </Card>
+        </div>
       </div>
     </div>
   );

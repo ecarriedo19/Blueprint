@@ -180,7 +180,10 @@ const QuotesPage = () => {
                 </td>
                 <td className="py-4 px-4">
                   <span className="text-slate-300">
-                    {quote.timeToDevelop || '—'}
+                    {quote.timeToDevelopValue > 0 && quote.timeToDevelopUnit 
+                      ? `${quote.timeToDevelopValue} ${quote.timeToDevelopUnit}`
+                      : quote.timeToDevelop || '—'
+                    }
                   </span>
                 </td>
                 <td className="py-4 px-4 text-right">
