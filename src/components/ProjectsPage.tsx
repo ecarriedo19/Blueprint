@@ -4,6 +4,17 @@ import Card from './Card';
 import Button from './Button';
 import PageHeader from './PageHeader';
 
+interface User {
+  id: number;
+  name: string;
+  email: string;
+  role?: string;
+}
+
+interface ProjectsPageProps {
+  currentUser: User;
+}
+
 interface CreateProjectModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -208,11 +219,17 @@ const ProjectCard: React.FC<ProjectCardProps> = ({ project, onUpdate }) => {
   );
 };
 
-const ProjectsPage: React.FC = () => {
+const ProjectsPage: React.FC<ProjectsPageProps> = ({ currentUser }) => {
   const { projects, addProject, updateProject, refreshProjects, loading, error } = useProjects();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterPriority, setFilterPriority] = useState('all');
+
+  // Role-based permission check
+  const canModifyProjects = () => {
+    const userRole = currentUser?.role || 'Member';
+    return userRole === 'Admin' || userRole === 'Member';
+  };
 
   useEffect(() => {
     refreshProjects();
@@ -296,13 +313,15 @@ const ProjectsPage: React.FC = () => {
           </select>
         </div>
 
-        <Button
-          onClick={() => setIsCreateModalOpen(true)}
-          variant="primary"
-          className="whitespace-nowrap"
-        >
-          + Create Project
-        </Button>
+        {canModifyProjects() && (
+          <Button
+            onClick={() => setIsCreateModalOpen(true)}
+            variant="primary"
+            className="whitespace-nowrap"
+          >
+            + Create Project
+          </Button>
+        )}
       </div>
 
       {filteredProjects.length === 0 ? (

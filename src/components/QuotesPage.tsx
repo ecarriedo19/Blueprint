@@ -1,12 +1,27 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import PageHeader from './PageHeader';
 import Card from './Card';
 import Button from './Button';
 import QuoteModal from './QuoteModal';
 import { useQuotes, Quote } from '../contexts/QuoteContext';
+import { useApp } from '../contexts/AppContext';
 
-const QuotesPage = () => {
+interface User {
+  id: number;
+  name: string;
+  email: string;
+  role?: string;
+}
+
+interface QuotesPageProps {
+  currentUser: User;
+}
+
+const QuotesPage = ({ currentUser }: QuotesPageProps) => {
+  const navigate = useNavigate();
   const { quotes, loading, error, deleteQuote } = useQuotes();
+  const { showConfirmationModal } = useApp();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [quoteToEdit, setQuoteToEdit] = useState<Quote | null>(null);
   const [toast, setToast] = useState<{ message: string; isVisible: boolean; type: 'success' | 'error' }>({ 
@@ -14,6 +29,12 @@ const QuotesPage = () => {
     isVisible: false, 
     type: 'success' 
   });
+
+  // Role-based permission check
+  const canModifyQuotes = () => {
+    const userRole = currentUser?.role || 'Member';
+    return userRole === 'Admin' || userRole === 'Member';
+  };
 
   // Handle toast notifications
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
@@ -39,21 +60,29 @@ const QuotesPage = () => {
     setIsModalOpen(true);
   };
 
+  // Handle viewing a quote in detail
+  const handleViewQuote = (quote: Quote) => {
+    navigate(`/quotes/${quote.id}`);
+  };
+
   // Handle deleting a quote
-  const handleDeleteQuote = async (quote: Quote) => {
-    const confirmDelete = window.confirm(
-      `Are you sure you want to delete the quote "${quote.quoteName}"? This action cannot be undone.`
-    );
-    
-    if (confirmDelete) {
-      try {
-        await deleteQuote(quote.id);
-        showToast('Quote deleted successfully!');
-      } catch (error) {
-        console.error('Failed to delete quote:', error);
-        showToast('Failed to delete quote. Please try again.', 'error');
+  const handleDeleteQuote = (quote: Quote) => {
+    showConfirmationModal({
+      title: 'Delete Quote', 
+      message: `Are you sure you want to delete the quote "${quote.quoteName}"? This action cannot be undone.`,
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      type: 'danger',
+      onConfirm: async () => {
+        try {
+          await deleteQuote(quote.id);
+          showToast('Quote deleted successfully!');
+        } catch (error) {
+          console.error('Failed to delete quote:', error);
+          showToast('Failed to delete quote. Please try again.', 'error');
+        }
       }
-    }
+    });
   };
 
   // Handle closing modal and resetting edit state
@@ -88,15 +117,20 @@ const QuotesPage = () => {
         </div>
         <h3 className="text-2xl font-bold text-white mb-4">No Quotes Yet</h3>
         <p className="text-slate-400 mb-8 leading-relaxed">
-          You don't have any quotes yet. Create your first quote to start managing construction project estimates and costs.
+          {canModifyQuotes() 
+            ? "You don't have any quotes yet. Create your first quote to start managing construction project estimates and costs."
+            : "No quotes to display. Contact an administrator to create quotes."
+          }
         </p>
-        <Button
-          onClick={handleCreateQuote}
-          size="lg"
-          className="px-8"
-        >
-          + Add Your First Quote
-        </Button>
+        {canModifyQuotes() && (
+          <Button
+            onClick={handleCreateQuote}
+            size="lg"
+            className="px-8"
+          >
+            + Add Your First Quote
+          </Button>
+        )}
       </div>
     </Card>
   );
@@ -155,8 +189,9 @@ const QuotesPage = () => {
             {quotes.map((quote, index) => (
               <tr
                 key={quote.id}
+                onClick={() => handleViewQuote(quote)}
                 className={`
-                  group border-b border-slate-700/30 hover:bg-white/5 transition-colors duration-200
+                  group border-b border-slate-700/30 hover:bg-white/5 transition-colors duration-200 cursor-pointer
                   ${index === quotes.length - 1 ? 'border-b-0' : ''}
                 `}
               >
@@ -201,26 +236,40 @@ const QuotesPage = () => {
                     {formatCurrency(quote.budget)}
                   </span>
                 </td>
-                <td className="py-4 px-4">
+                <td className="py-4 px-4" onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                     <button
-                      onClick={() => handleEditQuote(quote)}
-                      className="p-2 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors duration-200"
-                      title="Edit quote"
+                      onClick={() => handleViewQuote(quote)}
+                      className="p-2 text-slate-400 hover:text-green-400 hover:bg-green-500/10 rounded-lg transition-colors duration-200"
+                      title="View quote details"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                       </svg>
                     </button>
-                    <button
-                      onClick={() => handleDeleteQuote(quote)}
-                      className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors duration-200"
-                      title="Delete quote"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    </button>
+                    {canModifyQuotes() && (
+                      <button
+                        onClick={() => handleEditQuote(quote)}
+                        className="p-2 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors duration-200"
+                        title="Edit quote"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </button>
+                    )}
+                    {canModifyQuotes() && (
+                      <button
+                        onClick={() => handleDeleteQuote(quote)}
+                        className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors duration-200"
+                        title="Delete quote"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -270,7 +319,7 @@ const QuotesPage = () => {
           size="lg"
         />
         
-        {quotes.length > 0 && (
+        {quotes.length > 0 && canModifyQuotes() && (
           <Button
             onClick={handleCreateQuote}
             className="shrink-0"

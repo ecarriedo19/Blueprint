@@ -1,10 +1,11 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import PageHeader from './PageHeader';
 import Card from './Card';
 import Button from './Button';
 import ThemeToggle from './ThemeToggle';
-import { Building2, CreditCard, Users2, Link, Shield, ChevronRight, Palette } from 'lucide-react';
+import { Building2, CreditCard, Users2, Link, Shield, ChevronRight, Palette, Mail, Trash2, UserCheck, AlertCircle } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
+import { useApp } from '../contexts/AppContext';
 
 // Define the navigation items
 const navItems = [
@@ -46,17 +47,386 @@ const navItems = [
   }
 ];
 
+// Team Member interface
+interface TeamMember {
+  id: number;
+  name: string;
+  email: string;
+  role: string;
+  profilePictureUrl?: string;
+  created_at: string;
+}
+
+// Team Management Component
+const TeamManagementContent = () => {
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteRole, setInviteRole] = useState('Member');
+  const [loading, setLoading] = useState(false);
+  const [inviting, setInviting] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const { showConfirmationModal } = useApp();
+
+  // Fetch team members
+  const fetchTeamMembers = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await fetch('http://localhost:4000/api/team/members', {
+        credentials: 'include'
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch team members');
+      }
+      
+      const data = await response.json();
+      if (data.success) {
+        setTeamMembers(data.data);
+      } else {
+        throw new Error(data.error || 'Failed to fetch team members');
+      }
+    } catch (err) {
+      console.error('Error fetching team members:', err);
+      setError('Failed to load team members');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Load team members on component mount
+  useEffect(() => {
+    fetchTeamMembers();
+  }, [fetchTeamMembers]);
+
+  // Send invitation
+  const handleSendInvite = async (e) => {
+    e.preventDefault();
+    if (!inviteEmail.trim()) return;
+
+    setInviting(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      const response = await fetch('http://localhost:4000/api/team/invite', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          email: inviteEmail.trim(),
+          role: inviteRole
+        })
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        setSuccess(`Invitation sent to ${inviteEmail}`);
+        setInviteEmail('');
+        setInviteRole('Member');
+      } else {
+        setError(data.error || 'Failed to send invitation');
+      }
+    } catch (err) {
+      console.error('Error sending invitation:', err);
+      setError('Failed to send invitation. Please try again.');
+    } finally {
+      setInviting(false);
+    }
+  };
+
+  // Update user role
+  const handleRoleChange = async (userId, newRole, userName) => {
+    try {
+      const response = await fetch(`http://localhost:4000/api/team/members/${userId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify({ role: newRole })
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        setSuccess(`${userName}'s role updated to ${newRole}`);
+        fetchTeamMembers(); // Refresh the list
+      } else {
+        setError(data.error || 'Failed to update role');
+      }
+    } catch (err) {
+      console.error('Error updating role:', err);
+      setError('Failed to update role. Please try again.');
+    }
+  };
+
+  // Delete user
+  const handleDeleteUser = (userId, userName) => {
+    showConfirmationModal({
+      title: 'Remove Team Member',
+      message: `Are you sure you want to remove ${userName} from the team? This action cannot be undone and they will lose access to all projects and data.`,
+      confirmText: 'Remove Member',
+      cancelText: 'Cancel',
+      type: 'danger',
+      onConfirm: async () => {
+        try {
+          const response = await fetch(`http://localhost:4000/api/team/members/${userId}`, {
+            method: 'DELETE',
+            credentials: 'include'
+          });
+
+          const data = await response.json();
+          
+          if (data.success) {
+            setSuccess(data.message);
+            fetchTeamMembers(); // Refresh the list
+          } else {
+            setError(data.error || 'Failed to remove team member');
+          }
+        } catch (err) {
+          console.error('Error removing team member:', err);
+          setError('Failed to remove team member. Please try again.');
+        }
+      }
+    });
+  };
+
+
+
+  return (
+    <div className="space-y-8">
+      {/* Status Messages */}
+      {error && (
+        <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-3">
+          <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
+          <p className="text-red-300 text-sm">{error}</p>
+          <button 
+            onClick={() => setError('')}
+            className="ml-auto text-red-400 hover:text-red-300"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
+      {success && (
+        <div className="p-4 bg-green-500/10 border border-green-500/30 rounded-lg flex items-center gap-3">
+          <UserCheck className="w-5 h-5 text-green-400 flex-shrink-0" />
+          <p className="text-green-300 text-sm">{success}</p>
+          <button 
+            onClick={() => setSuccess('')}
+            className="ml-auto text-green-400 hover:text-green-300"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
+      {/* Invite New Member Form */}
+      <div className="bg-slate-800/50 rounded-lg p-6 border border-slate-700/50">
+        <h4 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+          <Mail className="w-5 h-5 text-blue-400" />
+          Invite New Team Member
+        </h4>
+        
+        <form onSubmit={handleSendInvite} className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">
+                Email Address
+              </label>
+              <input
+                type="email"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                placeholder="colleague@company.com"
+                required
+                className="w-full px-4 py-2 bg-slate-700/50 border border-slate-600/50 rounded-lg 
+                          focus:outline-none focus:ring-2 focus:ring-blue-500 text-white 
+                          placeholder-slate-400 transition-colors"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">
+                Role
+              </label>
+              <select
+                value={inviteRole}
+                onChange={(e) => setInviteRole(e.target.value)}
+                className="w-full px-4 py-2 bg-slate-700/50 border border-slate-600/50 rounded-lg 
+                          focus:outline-none focus:ring-2 focus:ring-blue-500 text-white 
+                          transition-colors"
+              >
+                <option value="Member">Member</option>
+                <option value="View-Only">View-Only</option>
+                <option value="Admin">Admin</option>
+              </select>
+            </div>
+          </div>
+
+          <Button
+            type="submit"
+            variant="primary"
+            loading={inviting}
+            disabled={inviting || !inviteEmail.trim()}
+            className="w-full md:w-auto"
+          >
+            {inviting ? 'Sending Invitation...' : 'Send Invitation'}
+          </Button>
+        </form>
+
+        <div className="mt-4 p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+          <p className="text-blue-300 text-sm">
+            💡 Invitations are valid for 7 days. The invited user will receive an email with a secure link to join your team.
+          </p>
+        </div>
+      </div>
+
+      {/* Team Members List */}
+      <div className="bg-slate-800/50 rounded-lg border border-slate-700/50 overflow-hidden">
+        <div className="p-6 border-b border-slate-700/50">
+          <h4 className="text-lg font-semibold text-white flex items-center gap-2">
+            <Users2 className="w-5 h-5 text-blue-400" />
+            Team Members ({teamMembers.length})
+          </h4>
+          <p className="text-slate-400 text-sm mt-1">
+            Manage roles and permissions for your team members
+          </p>
+        </div>
+
+        {loading ? (
+          <div className="p-8 text-center">
+            <div className="inline-flex items-center gap-2 text-slate-400">
+              <div className="w-4 h-4 border-2 border-slate-400/30 border-t-slate-400 rounded-full animate-spin"></div>
+              Loading team members...
+            </div>
+          </div>
+        ) : teamMembers.length === 0 ? (
+          <div className="p-8 text-center text-slate-400">
+            No team members found. Start by inviting someone to join your team.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="bg-slate-700/30 border-b border-slate-600/50">
+                  <th className="px-6 py-4 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">
+                    Member
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">
+                    Role
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">
+                    Joined
+                  </th>
+                  <th className="px-6 py-4 text-right text-xs font-medium text-slate-300 uppercase tracking-wider">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-700/50">
+                {teamMembers.map((member) => (
+                  <tr key={member.id} className="hover:bg-slate-700/20 transition-colors">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
+                          {member.profilePictureUrl ? (
+                            <img 
+                              src={member.profilePictureUrl} 
+                              alt={member.name}
+                              className="w-10 h-10 rounded-full object-cover"
+                            />
+                          ) : (
+                            <span className="text-white font-semibold text-sm">
+                              {member.name?.charAt(0)?.toUpperCase() || member.email.charAt(0).toUpperCase()}
+                            </span>
+                          )}
+                        </div>
+                        <div>
+                          <div className="text-white font-medium">{member.name || 'Unknown User'}</div>
+                          <div className="text-slate-400 text-sm">{member.email}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <select
+                        value={member.role || 'Member'}
+                        onChange={(e) => handleRoleChange(member.id, e.target.value, member.name)}
+                        className="bg-slate-700/50 border border-slate-600/50 rounded-lg px-3 py-1 text-sm text-white
+                                  focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                      >
+                        <option value="View-Only">View-Only</option>
+                        <option value="Member">Member</option>
+                        <option value="Admin">Admin</option>
+                      </select>
+                    </td>
+                    <td className="px-6 py-4 text-slate-300 text-sm">
+                      {new Date(member.created_at).toLocaleDateString()}
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <button
+                        onClick={() => handleDeleteUser(member.id, member.name)}
+                        className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg 
+                                  transition-colors duration-200"
+                        title="Remove team member"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+interface User {
+  id: number;
+  name: string;
+  email: string;
+  role?: string;
+}
+
 interface SettingsPageProps {
   companyName: string;
   updateCompanyName: (name: string) => Promise<void>;
+  currentUser: User;
 }
 
-const SettingsPage = ({ companyName, updateCompanyName }: SettingsPageProps) => {
+const SettingsPage = ({ companyName, updateCompanyName, currentUser }: SettingsPageProps) => {
   const [activeTab, setActiveTab] = useState('profile');
   const [newCompanyName, setNewCompanyName] = useState(companyName);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
   const { theme } = useTheme();
+
+  // Role-based permission check
+  const isAdmin = () => {
+    const userRole = currentUser?.role || 'Member';
+    return userRole === 'Admin';
+  };
+
+  // Filter nav items based on user role
+  const getVisibleNavItems = () => {
+    return navItems.filter(item => {
+      // Only show billing and team management to admins
+      if (item.id === 'billing' || item.id === 'team') {
+        return isAdmin();
+      }
+      return true;
+    });
+  };
+
+  const visibleNavItems = getVisibleNavItems();
 
   // Handle save company name
   const handleSave = useCallback(async () => {
@@ -84,40 +454,54 @@ const SettingsPage = ({ companyName, updateCompanyName }: SettingsPageProps) => 
         description: "Manage your organization's profile and preferences.",
         content: (
           <div className="space-y-6">
-            <div className="space-y-2">
-              <label htmlFor="companyName" className="block text-sm font-medium text-gray-700 dark:text-slate-300">
-                Company Name
-              </label>
+            {isAdmin() ? (
               <div className="space-y-2">
-                <input
-                  type="text"
-                  id="companyName"
-                  value={newCompanyName}
-                  onChange={(e) => {
-                    setNewCompanyName(e.target.value);
-                    setError(''); // Clear error when user types
-                  }}
-                  disabled={isSaving}
-                  className={`w-full px-4 py-2 bg-gray-100/50 dark:bg-slate-800/50 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-white transition-colors
-                    ${error ? 'border-red-500/50' : 'border-gray-300/50 dark:border-slate-700/50'}
-                    ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  placeholder="Enter company name"
-                />
-                {error && (
-                  <p className="text-sm text-red-400">{error}</p>
-                )}
+                <label htmlFor="companyName" className="block text-sm font-medium text-gray-700 dark:text-slate-300">
+                  Company Name
+                </label>
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    id="companyName"
+                    value={newCompanyName}
+                    onChange={(e) => {
+                      setNewCompanyName(e.target.value);
+                      setError(''); // Clear error when user types
+                    }}
+                    disabled={isSaving}
+                    className={`w-full px-4 py-2 bg-gray-100/50 dark:bg-slate-800/50 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-white transition-colors
+                      ${error ? 'border-red-500/50' : 'border-gray-300/50 dark:border-slate-700/50'}
+                      ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    placeholder="Enter company name"
+                  />
+                  {error && (
+                    <p className="text-sm text-red-400">{error}</p>
+                  )}
+                </div>
+                <div className="mt-4">
+                  <Button
+                    variant="primary"
+                    onClick={handleSave}
+                    loading={isSaving}
+                    disabled={isSaving || !newCompanyName.trim() || newCompanyName.trim() === companyName}
+                  >
+                    {isSaving ? 'Saving...' : 'Save Changes'}
+                  </Button>
+                </div>
               </div>
-              <div className="mt-4">
-                <Button
-                  variant="primary"
-                  onClick={handleSave}
-                  loading={isSaving}
-                  disabled={isSaving || !newCompanyName.trim() || newCompanyName.trim() === companyName}
-                >
-                  {isSaving ? 'Saving...' : 'Save Changes'}
-                </Button>
+            ) : (
+              <div className="p-4 bg-yellow-50/50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200/50 dark:border-yellow-700/50">
+                <h4 className="font-medium text-yellow-800 dark:text-yellow-300 mb-2">Limited Access</h4>
+                <p className="text-sm text-yellow-700 dark:text-yellow-400">
+                  You don't have permission to modify company profile settings. Please contact an administrator.
+                </p>
+                <div className="mt-3 p-3 bg-gray-50 dark:bg-slate-800 rounded border">
+                  <p className="text-sm text-gray-600 dark:text-slate-400">
+                    <strong>Current Company:</strong> {companyName}
+                  </p>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )
       },
@@ -172,7 +556,7 @@ const SettingsPage = ({ companyName, updateCompanyName }: SettingsPageProps) => 
       team: {
         title: 'Team Members',
         description: 'Manage your team and their access levels.',
-        content: 'Invite new team members, set roles and permissions, and manage access to different features of the platform.'
+        content: <TeamManagementContent />
       },
       integrations: {
         title: 'Integrations',
@@ -222,7 +606,7 @@ const SettingsPage = ({ companyName, updateCompanyName }: SettingsPageProps) => 
         {/* Navigation Sidebar */}
         <Card variant="glass" className="h-fit" padding="sm" hover={false}>
           <nav className="space-y-1">
-            {navItems.map((item) => {
+            {visibleNavItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeTab === item.id;
               

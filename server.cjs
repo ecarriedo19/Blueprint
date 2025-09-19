@@ -6,10 +6,24 @@ const session = require('express-session');
 const SQLiteStore = require('connect-sqlite3')(session);
 const { createClient } = require('@supabase/supabase-js');
 const { pipeline } = require('@xenova/transformers');
+const puppeteer = require('puppeteer');
+const fs = require('fs').promises;
+const path = require('path');
+const crypto = require('crypto');
+const { Resend } = require('resend');
 require('dotenv').config();
 
 const app = express();
 const PORT = 4000;
+
+// Initialize Resend client for email sending
+let resend = null;
+if (process.env.RESEND_API_KEY) {
+  resend = new Resend(process.env.RESEND_API_KEY);
+  console.log('✅ Resend email client initialized');
+} else {
+  console.warn('⚠️  RESEND_API_KEY not configured - email invitations will be disabled');
+}
 
 // Initialize Supabase client
 let supabase = null;
@@ -33,7 +47,7 @@ if (process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY) {
 }
 
 app.use(cors({
-  origin: 'http://localhost:5173',
+  origin: ['http://localhost:5173', 'http://localhost:5174'],
   credentials: true
 }));
 app.use(express.json());
@@ -77,6 +91,7 @@ db.serialize(() => {
     name TEXT,
     profilePictureUrl TEXT,
     provider TEXT,
+    role TEXT DEFAULT 'Member',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
@@ -142,6 +157,36 @@ db.serialize(() => {
     });
   });
 
+  // Migration: Add role column to existing users table if it doesn't exist
+  db.all("PRAGMA table_info(users)", (err, columns) => {
+    if (err) {
+      console.error('Error checking users table schema:', err);
+      return;
+    }
+    
+    const hasRole = columns.some(col => col.name === 'role');
+    if (!hasRole) {
+      console.log('Adding role column to users table...');
+      db.run(`ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'Member'`, (err) => {
+        if (err) {
+          console.error('Error adding role column to users:', err);
+        } else {
+          console.log('✅ Added role column to users table');
+          // Update existing users to have Member role
+          db.run(`UPDATE users SET role = 'Member' WHERE role IS NULL`, (err) => {
+            if (err) {
+              console.error('Error updating existing users with default role:', err);
+            } else {
+              console.log('✅ Updated existing users with default Member role');
+            }
+          });
+        }
+      });
+    } else {
+      console.log('✅ role column already exists in users table');
+    }
+  });
+
   db.run(`CREATE TABLE IF NOT EXISTS quotes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     quoteName TEXT NOT NULL,
@@ -200,8 +245,72 @@ db.serialize(() => {
     FOREIGN KEY (user_id) REFERENCES users (id)
   )`);
 
+  db.run(`CREATE TABLE IF NOT EXISTS line_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    description TEXT NOT NULL,
+    estimatedCost REAL DEFAULT 0,
+    actualCost REAL DEFAULT 0,
+    quoteId INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (quoteId) REFERENCES quotes (id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users (id)
+  )`);
+
+  // Create invitations table for team member invitations
+  db.run(`CREATE TABLE IF NOT EXISTS invitations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT NOT NULL,
+    token TEXT UNIQUE NOT NULL,
+    role TEXT NOT NULL DEFAULT 'Member',
+    inviterId INTEGER NOT NULL,
+    status TEXT DEFAULT 'pending',
+    email_attempts INTEGER DEFAULT 0,
+    last_attempt_at DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    expires_at DATETIME NOT NULL,
+    used_at DATETIME,
+    FOREIGN KEY (inviterId) REFERENCES users (id)
+  )`);
+
   // Insert default company profile if it doesn't exist
   db.run(`INSERT OR IGNORE INTO company_profile (id, company_name) VALUES ('default', 'Company Co')`);
+
+  // Migration: Add email_attempts and last_attempt_at columns to invitations table
+  db.all("PRAGMA table_info(invitations)", (err, columns) => {
+    if (err) {
+      console.error('Error checking invitations table schema:', err);
+      return;
+    }
+    
+    const hasEmailAttempts = columns.some(col => col.name === 'email_attempts');
+    const hasLastAttempt = columns.some(col => col.name === 'last_attempt_at');
+    
+    if (!hasEmailAttempts) {
+      db.run(`ALTER TABLE invitations ADD COLUMN email_attempts INTEGER DEFAULT 0`, (err) => {
+        if (err) {
+          console.error('Error adding email_attempts column:', err);
+        } else {
+          console.log('✅ Added email_attempts column to invitations table');
+        }
+      });
+    }
+    
+    if (!hasLastAttempt) {
+      db.run(`ALTER TABLE invitations ADD COLUMN last_attempt_at DATETIME`, (err) => {
+        if (err) {
+          console.error('Error adding last_attempt_at column:', err);
+        } else {
+          console.log('✅ Added last_attempt_at column to invitations table');
+        }
+      });
+    }
+    
+    if (hasEmailAttempts && hasLastAttempt) {
+      console.log('✅ invitations table columns already exist');
+    }
+  });
 
   console.log('Database tables created/updated successfully');
 });
@@ -223,14 +332,58 @@ const requireAuth = (req, res, next) => {
   next();
 };
 
+// Role-based access control middleware
+const checkPermission = (allowedRoles) => {
+  return (req, res, next) => {
+    if (!req.session.userId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    // Get the user's role from the database
+    db.get(
+      'SELECT role FROM users WHERE id = ?',
+      [req.session.userId],
+      (err, user) => {
+        if (err) {
+          console.error('Error checking user role:', err);
+          return res.status(500).json({ error: 'Internal server error' });
+        }
+
+        if (!user) {
+          return res.status(401).json({ error: 'User not found' });
+        }
+
+        const userRole = user.role || 'Member'; // Default to Member if role is null
+
+        // Check if user's role is in the allowed roles
+        if (!allowedRoles.includes(userRole)) {
+          return res.status(403).json({ 
+            error: 'Insufficient permissions', 
+            required: allowedRoles,
+            current: userRole 
+          });
+        }
+
+        // Add user role to request object for further use
+        req.userRole = userRole;
+        next();
+      }
+    );
+  };
+};
+
 // Get current user profile
 app.get('/api/me', requireAuth, (req, res) => {
   db.get(
-    'SELECT id, googleId, email, name, profilePictureUrl, provider FROM users WHERE id = ?',
+    'SELECT id, googleId, email, name, profilePictureUrl, provider, role FROM users WHERE id = ?',
     [req.session.userId],
     (err, user) => {
       if (err) return res.status(500).json({ error: err.message });
       if (!user) return res.status(404).json({ error: 'User not found' });
+      // Ensure role has a default value
+      if (!user.role) {
+        user.role = 'Member';
+      }
       res.json(user);
     }
   );
@@ -363,7 +516,7 @@ app.get('/api/company-profile', requireAuth, (req, res) => {
 });
 
 // Update company profile
-app.post('/api/company-profile', requireAuth, (req, res) => {
+app.post('/api/company-profile', checkPermission(['Admin']), (req, res) => {
   const { company_name } = req.body;
   if (!company_name) return res.status(400).json({ error: 'Company name is required' });
   
@@ -641,7 +794,7 @@ app.get('/api/projects', requireAuth, (req, res) => {
 });
 
 // Create a new project for the authenticated user
-app.post('/api/projects', requireAuth, (req, res) => {
+app.post('/api/projects', checkPermission(['Admin', 'Member']), (req, res) => {
   console.log('🔍 POST /api/projects - Request received');
   console.log('🔍 Request body:', req.body);
   console.log('🔍 User ID from session:', req.session.userId);
@@ -710,7 +863,7 @@ app.post('/api/projects', requireAuth, (req, res) => {
 });
 
 // Update project status (useful for AI actions)
-app.patch('/api/projects/:projectId', requireAuth, (req, res) => {
+app.patch('/api/projects/:projectId', checkPermission(['Admin', 'Member']), (req, res) => {
   const userId = req.session.userId;
   const { projectId } = req.params;
   const { status, budget, description, priority, name } = req.body;
@@ -812,6 +965,191 @@ app.patch('/api/projects/:projectId', requireAuth, (req, res) => {
   );
 });
 
+// Dashboard API Endpoints
+
+// Get dashboard summary with aggregated metrics for the authenticated user
+app.get('/api/dashboard-summary', requireAuth, (req, res) => {
+  console.log('🔍 GET /api/dashboard-summary - Request received for user:', req.session.userId);
+  
+  const userId = req.session.userId;
+  
+  // Get total revenue (sum of quoteTotal from approved/completed quotes)
+  const getTotalRevenue = () => {
+    return new Promise((resolve, reject) => {
+      db.get(
+        `SELECT COALESCE(SUM(quoteTotal), 0) as totalRevenue 
+         FROM quotes 
+         WHERE user_id = ? AND (LOWER(status) = 'approved' OR LOWER(status) = 'completed')`,
+        [userId],
+        (err, result) => {
+          if (err) reject(err);
+          else resolve(result.totalRevenue);
+        }
+      );
+    });
+  };
+
+  // Get total budgeted cost (sum of budget from approved/completed quotes)
+  const getTotalBudget = () => {
+    return new Promise((resolve, reject) => {
+      db.get(
+        `SELECT COALESCE(SUM(budget), 0) as totalBudget 
+         FROM quotes 
+         WHERE user_id = ? AND (LOWER(status) = 'approved' OR LOWER(status) = 'completed')`,
+        [userId],
+        (err, result) => {
+          if (err) reject(err);
+          else resolve(result.totalBudget);
+        }
+      );
+    });
+  };
+
+  // Get project status breakdown
+  const getStatusBreakdown = () => {
+    return new Promise((resolve, reject) => {
+      db.all(
+        `SELECT status, COUNT(*) as count 
+         FROM quotes 
+         WHERE user_id = ? 
+         GROUP BY status`,
+        [userId],
+        (err, results) => {
+          if (err) reject(err);
+          else {
+            const breakdown = {};
+            results.forEach(row => {
+              breakdown[row.status] = row.count;
+            });
+            resolve(breakdown);
+          }
+        }
+      );
+    });
+  };
+
+  // Get cash flow over time (last 6 months)
+  const getCashFlowData = () => {
+    return new Promise((resolve, reject) => {
+      db.all(
+        `SELECT 
+           strftime('%Y-%m', created_at) as month,
+           COALESCE(SUM(quoteTotal), 0) as revenue
+         FROM quotes 
+         WHERE user_id = ? 
+           AND (LOWER(status) = 'approved' OR LOWER(status) = 'completed')
+           AND created_at >= date('now', '-6 months')
+         GROUP BY strftime('%Y-%m', created_at)
+         ORDER BY month ASC`,
+        [userId],
+        (err, results) => {
+          if (err) reject(err);
+          else {
+            // Fill in missing months with 0 revenue
+            const cashFlow = [];
+            const now = new Date();
+            
+            for (let i = 5; i >= 0; i--) {
+              const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+              const monthKey = date.toISOString().substring(0, 7); // YYYY-MM format
+              const monthName = date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+              
+              const existingData = results.find(row => row.month === monthKey);
+              cashFlow.push({
+                month: monthName,
+                revenue: existingData ? existingData.revenue : 0
+              });
+            }
+            
+            resolve(cashFlow);
+          }
+        }
+      );
+    });
+  };
+
+  // Get total projects count
+  const getTotalProjects = () => {
+    return new Promise((resolve, reject) => {
+      db.get(
+        `SELECT COUNT(*) as totalProjects FROM quotes WHERE user_id = ?`,
+        [userId],
+        (err, result) => {
+          if (err) reject(err);
+          else resolve(result.totalProjects);
+        }
+      );
+    });
+  };
+
+  // Get active projects count
+  const getActiveProjects = () => {
+    return new Promise((resolve, reject) => {
+      db.get(
+        `SELECT COUNT(*) as activeProjects 
+         FROM quotes 
+         WHERE user_id = ? 
+           AND LOWER(status) IN ('approved', 'working on it', 'in progress')`,
+        [userId],
+        (err, result) => {
+          if (err) reject(err);
+          else resolve(result.activeProjects);
+        }
+      );
+    });
+  };
+
+  // Execute all queries
+  Promise.all([
+    getTotalRevenue(),
+    getTotalBudget(),
+    getStatusBreakdown(),
+    getCashFlowData(),
+    getTotalProjects(),
+    getActiveProjects()
+  ])
+  .then(([totalRevenue, totalBudget, statusBreakdown, cashFlowData, totalProjects, activeProjects]) => {
+    // Calculate profit margin
+    const profitMargin = totalBudget > 0 ? ((totalRevenue - totalBudget) / totalBudget) * 100 : 0;
+    
+    // Calculate growth rate (compare last month to previous month in cash flow)
+    let growthRate = 0;
+    if (cashFlowData.length >= 2) {
+      const lastMonth = cashFlowData[cashFlowData.length - 1].revenue;
+      const previousMonth = cashFlowData[cashFlowData.length - 2].revenue;
+      if (previousMonth > 0) {
+        growthRate = ((lastMonth - previousMonth) / previousMonth) * 100;
+      }
+    }
+
+    const dashboardData = {
+      kpis: {
+        totalRevenue,
+        totalBudget,
+        profitMargin,
+        growthRate,
+        totalProjects,
+        activeProjects
+      },
+      statusBreakdown,
+      cashFlowData
+    };
+
+    console.log('✅ Dashboard summary calculated successfully');
+    res.json({
+      success: true,
+      data: dashboardData
+    });
+  })
+  .catch(error => {
+    console.error('❌ Error calculating dashboard summary:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to calculate dashboard summary'
+    });
+  });
+});
+
 // Quotes API Endpoints
 
 // Get all quotes for the authenticated user
@@ -856,7 +1194,7 @@ app.get('/api/quotes', requireAuth, (req, res) => {
 });
 
 // Create a new quote for the authenticated user
-app.post('/api/quotes', requireAuth, (req, res) => {
+app.post('/api/quotes', checkPermission(['Admin', 'Member']), (req, res) => {
   console.log('🔍 POST /api/quotes - Request received for user:', req.session.userId);
   console.log('Request body:', req.body);
   
@@ -959,32 +1297,14 @@ app.post('/api/quotes', requireAuth, (req, res) => {
   );
 });
 
-// Update an existing quote for the authenticated user
-app.put('/api/quotes/:id', requireAuth, (req, res) => {
+// Update an existing quote for the authenticated user (supports partial updates)
+app.put('/api/quotes/:id', checkPermission(['Admin', 'Member']), (req, res) => {
   console.log('🔍 PUT /api/quotes/:id - Request received for user:', req.session.userId);
   console.log('Quote ID:', req.params.id);
   console.log('Request body:', req.body);
   
   const quoteId = parseInt(req.params.id);
-  const { 
-    quoteName, 
-    status, 
-    timeToDevelop, 
-    timeToDevelopValue,
-    timeToDevelopUnit,
-    variancePercentage, 
-    quoteTotal, 
-    budget 
-  } = req.body;
-
-  // Validation
-  if (!quoteName || quoteName.trim() === '') {
-    console.log('❌ Validation failed: Quote name is required');
-    return res.status(400).json({ 
-      success: false, 
-      error: 'Quote name is required' 
-    });
-  }
+  const updates = req.body;
 
   if (!quoteId || isNaN(quoteId)) {
     console.log('❌ Validation failed: Invalid quote ID');
@@ -994,12 +1314,21 @@ app.put('/api/quotes/:id', requireAuth, (req, res) => {
     });
   }
 
+  // If quoteName is being updated, validate it's not empty
+  if (updates.quoteName !== undefined && (!updates.quoteName || updates.quoteName.trim() === '')) {
+    console.log('❌ Validation failed: Quote name cannot be empty');
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Quote name cannot be empty' 
+    });
+  }
+
   const userId = req.session.userId;
   const now = new Date().toISOString();
 
   // First check if the quote exists and belongs to the user
   db.get(
-    'SELECT id FROM quotes WHERE id = ? AND user_id = ?',
+    'SELECT * FROM quotes WHERE id = ? AND user_id = ?',
     [quoteId, userId],
     (err, existingQuote) => {
       if (err) {
@@ -1019,93 +1348,117 @@ app.put('/api/quotes/:id', requireAuth, (req, res) => {
         });
       }
 
+      // Build dynamic update query based on provided fields
+      const updateFields = [];
+      const updateValues = [];
+      
+      // Map of allowed update fields
+      const allowedFields = {
+        quoteName: 'quoteName',
+        status: 'status',
+        timeToDevelop: 'timeToDevelop',
+        timeToDevelopValue: 'timeToDevelopValue',
+        timeToDevelopUnit: 'timeToDevelopUnit',
+        variancePercentage: 'variancePercentage',
+        quoteTotal: 'quoteTotal',
+        budget: 'budget'
+      };
+
+      // Add fields that are being updated
+      Object.keys(updates).forEach(key => {
+        if (allowedFields[key]) {
+          updateFields.push(`${allowedFields[key]} = ?`);
+          let value = updates[key];
+          
+          // Handle special cases
+          if (key === 'quoteName' && value) {
+            value = value.trim();
+          }
+          
+          updateValues.push(value);
+        }
+      });
+
+      // Always update the updated_at timestamp
+      updateFields.push('updated_at = ?');
+      updateValues.push(now);
+
+      if (updateFields.length === 1) { // Only updated_at was added
+        return res.status(400).json({ 
+          success: false, 
+          error: 'No valid fields provided for update' 
+        });
+      }
+
+      // Add WHERE clause parameters
+      updateValues.push(quoteId, userId);
+
+      const updateQuery = `UPDATE quotes SET ${updateFields.join(', ')} WHERE id = ? AND user_id = ?`;
+      
+      console.log('🔧 Update query:', updateQuery);
+      console.log('🔧 Update values:', updateValues);
+
       // Update the quote
-      db.run(
-        `UPDATE quotes SET 
-          quoteName = ?, 
-          status = ?, 
-          timeToDevelop = ?, 
-          timeToDevelopValue = ?,
-          timeToDevelopUnit = ?,
-          variancePercentage = ?, 
-          quoteTotal = ?, 
-          budget = ?, 
-          updated_at = ?
-        WHERE id = ? AND user_id = ?`,
-        [
-          quoteName.trim(), 
-          status || 'Draft', 
-          timeToDevelop || '', 
-          timeToDevelopValue || 0,
-          timeToDevelopUnit || 'Weeks',
-          variancePercentage || 0, 
-          quoteTotal || 0, 
-          budget || 0, 
-          now,
-          quoteId, 
-          userId
-        ],
-        function (err) {
-          if (err) {
-            console.error('❌ Database error updating quote:', err);
-            return res.status(500).json({ 
-              success: false, 
-              error: 'Failed to update quote',
-              details: err.message 
-            });
-          }
+      db.run(updateQuery, updateValues, function (err) {
+        if (err) {
+          console.error('❌ Database error updating quote:', err);
+          return res.status(500).json({ 
+            success: false, 
+            error: 'Failed to update quote',
+            details: err.message 
+          });
+        }
 
-          if (this.changes === 0) {
-            console.log('❌ No rows were updated');
-            return res.status(404).json({ 
-              success: false, 
-              error: 'Quote not found or no changes made' 
-            });
-          }
+        if (this.changes === 0) {
+          console.log('❌ No rows were updated');
+          return res.status(404).json({ 
+            success: false, 
+            error: 'Quote not found or no changes made' 
+          });
+        }
 
-          // Fetch the updated quote to return it
-          db.get(
-            `SELECT 
-              id, 
-              quoteName, 
-              status, 
-              timeToDevelop, 
-              timeToDevelopValue,
-              timeToDevelopUnit,
-              variancePercentage, 
-              quoteTotal, 
-              budget, 
-              created_at, 
-              updated_at 
-            FROM quotes 
-            WHERE id = ?`,
-            [quoteId],
-            (selectErr, updatedQuote) => {
-              if (selectErr) {
-                console.error('❌ Error fetching updated quote:', selectErr);
-                return res.status(500).json({ 
-                  success: false, 
-                  error: 'Quote updated but failed to retrieve',
-                  details: selectErr.message 
-                });
-              }
-
-              console.log('✅ Quote updated successfully:', updatedQuote);
-              res.json({
-                success: true,
-                message: 'Quote updated successfully',
-                quote: updatedQuote
+        // Fetch the updated quote to return it
+        db.get(
+          `SELECT 
+            id, 
+            quoteName, 
+            status, 
+            timeToDevelop, 
+            timeToDevelopValue,
+            timeToDevelopUnit,
+            variancePercentage, 
+            quoteTotal, 
+            budget, 
+            created_at, 
+            updated_at 
+          FROM quotes 
+          WHERE id = ?`,
+          [quoteId],
+          (selectErr, updatedQuote) => {
+            if (selectErr) {
+              console.error('❌ Error fetching updated quote:', selectErr);
+              return res.status(500).json({ 
+                success: false, 
+                error: 'Quote updated but failed to retrieve',
+                details: selectErr.message 
               });
             }
-          );
-        }
-      );
+
+            console.log('✅ Quote updated successfully:', updatedQuote);
+            res.json({
+              success: true,
+              message: 'Quote updated successfully',
+              quote: updatedQuote
+            });
+          }
+        );
+      });
     }
   );
 });
 
 // Delete a quote for the authenticated user
-app.delete('/api/quotes/:id', requireAuth, (req, res) => {
+app.delete('/api/quotes/:id', checkPermission(['Admin', 'Member']), (req, res) => {
   console.log('🔍 DELETE /api/quotes/:id - Request received for user:', req.session.userId);
   console.log('Quote ID:', req.params.id);
   
@@ -1174,6 +1527,1393 @@ app.delete('/api/quotes/:id', requireAuth, (req, res) => {
       );
     }
   );
+});
+
+// Get a single quote by ID for the authenticated user
+app.get('/api/quotes/:id', requireAuth, (req, res) => {
+  console.log('🔍 GET /api/quotes/:id - Request received for user:', req.session.userId);
+  console.log('Quote ID:', req.params.id);
+  
+  const quoteId = parseInt(req.params.id);
+  const userId = req.session.userId;
+
+  if (!quoteId || isNaN(quoteId)) {
+    console.log('❌ Validation failed: Invalid quote ID');
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Invalid quote ID' 
+    });
+  }
+
+  db.get(
+    `SELECT 
+      id, quoteName, status, timeToDevelop, timeToDevelopValue, timeToDevelopUnit,
+      variancePercentage, quoteTotal, budget, created_at, updated_at
+     FROM quotes 
+     WHERE id = ? AND user_id = ?`,
+    [quoteId, userId],
+    (err, quote) => {
+      if (err) {
+        console.error('❌ Database error:', err);
+        return res.status(500).json({ 
+          success: false, 
+          error: 'Database error while fetching quote' 
+        });
+      }
+
+      if (!quote) {
+        console.log('❌ Quote not found or access denied');
+        return res.status(404).json({ 
+          success: false, 
+          error: 'Quote not found or access denied' 
+        });
+      }
+
+      console.log('✅ Quote fetched successfully:', quote.quoteName);
+      res.json({
+        success: true,
+        quote: quote
+      });
+    }
+  );
+});
+
+// Generate and download PDF for a specific quote
+app.get('/api/quotes/:id/pdf', requireAuth, async (req, res) => {
+  console.log('🔍 GET /api/quotes/:id/pdf - Request received for user:', req.session.userId);
+  console.log('Quote ID:', req.params.id);
+  
+  const quoteId = parseInt(req.params.id);
+  const userId = req.session.userId;
+
+  if (!quoteId || isNaN(quoteId)) {
+    console.log('❌ Validation failed: Invalid quote ID');
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Invalid quote ID' 
+    });
+  }
+
+  try {
+    // Fetch quote data
+    const quote = await new Promise((resolve, reject) => {
+      db.get(
+        `SELECT 
+          id, quoteName, status, timeToDevelop, timeToDevelopValue, timeToDevelopUnit,
+          variancePercentage, quoteTotal, budget, created_at, updated_at
+         FROM quotes 
+         WHERE id = ? AND user_id = ?`,
+        [quoteId, userId],
+        (err, result) => {
+          if (err) reject(err);
+          else resolve(result);
+        }
+      );
+    });
+
+    if (!quote) {
+      console.log('❌ Quote not found or access denied');
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Quote not found or access denied' 
+      });
+    }
+
+    // Fetch line items
+    const lineItems = await new Promise((resolve, reject) => {
+      db.all(
+        `SELECT id, description, estimatedCost, actualCost, created_at, updated_at 
+         FROM line_items 
+         WHERE quoteId = ? AND user_id = ? 
+         ORDER BY created_at ASC`,
+        [quoteId, userId],
+        (err, results) => {
+          if (err) reject(err);
+          else resolve(results || []);
+        }
+      );
+    });
+
+    // Fetch company profile
+    const companyProfile = await new Promise((resolve, reject) => {
+      db.get(
+        'SELECT company_name FROM company_profile WHERE user_id = ?',
+        [userId],
+        (err, result) => {
+          if (err) reject(err);
+          else resolve(result || { company_name: 'Company Co' });
+        }
+      );
+    });
+
+    // Read HTML template
+    const templatePath = path.join(__dirname, 'quote-template.html');
+    let htmlTemplate = await fs.readFile(templatePath, 'utf-8');
+
+    // Helper functions for formatting
+    const formatCurrency = (amount) => {
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+      }).format(amount || 0);
+    };
+
+    const formatPercentage = (percentage) => {
+      return `${percentage > 0 ? '+' : ''}${percentage.toFixed(1)}%`;
+    };
+
+    const formatDate = (dateString) => {
+      return new Date(dateString).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
+    };
+
+    const getStatusClass = (status) => {
+      switch (status.toLowerCase()) {
+        case 'draft': return 'draft';
+        case 'sent':
+        case 'pending':
+        case 'client to be review': return 'sent';
+        case 'approved': return 'approved';
+        case 'working on it':
+        case 'in progress': return 'working';
+        case 'completed': return 'completed';
+        case 'rejected': return 'rejected';
+        default: return 'draft';
+      }
+    };
+
+    const getVarianceClass = (variance) => {
+      if (variance > 0) return 'variance-positive';
+      if (variance < 0) return 'variance-negative';
+      return 'variance-neutral';
+    };
+
+    // Calculate totals and metrics
+    const totalEstimated = lineItems.reduce((sum, item) => sum + (item.estimatedCost || 0), 0);
+    const totalActual = lineItems.reduce((sum, item) => sum + (item.actualCost || 0), 0);
+    const totalVariance = totalEstimated === 0 ? 0 : ((totalActual - totalEstimated) / totalEstimated) * 100;
+    const profitMargin = totalActual === 0 ? 0 : ((quote.quoteTotal - totalActual) / totalActual) * 100;
+    const overallVariance = quote.quoteTotal === 0 ? 0 : ((totalActual - quote.quoteTotal) / quote.quoteTotal) * 100;
+
+    // Process line items for template
+    const processedLineItems = lineItems.map(item => {
+      const variance = item.estimatedCost === 0 ? 0 : ((item.actualCost - item.estimatedCost) / item.estimatedCost) * 100;
+      return {
+        description: item.description,
+        estimatedCost: formatCurrency(item.estimatedCost),
+        actualCost: formatCurrency(item.actualCost),
+        variance: formatPercentage(variance),
+        varianceClass: getVarianceClass(variance)
+      };
+    });
+
+    // Replace template placeholders
+    const replacements = {
+      '{{companyName}}': companyProfile.company_name,
+      '{{quoteName}}': quote.quoteName,
+      '{{status}}': quote.status.charAt(0).toUpperCase() + quote.status.slice(1).toLowerCase(),
+      '{{statusClass}}': getStatusClass(quote.status),
+      '{{createdDate}}': formatDate(quote.created_at),
+      '{{updatedDate}}': formatDate(quote.updated_at),
+      '{{generatedDate}}': formatDate(new Date().toISOString()),
+      '{{quoteTotal}}': formatCurrency(quote.quoteTotal),
+      '{{actualCost}}': formatCurrency(totalActual),
+      '{{profitMargin}}': formatPercentage(profitMargin),
+      '{{profitMarginClass}}': profitMargin >= 0 ? 'variance-negative' : 'variance-positive',
+      '{{overallVariance}}': formatPercentage(overallVariance),
+      '{{overallVarianceClass}}': getVarianceClass(overallVariance),
+      '{{totalEstimated}}': formatCurrency(totalEstimated),
+      '{{totalActual}}': formatCurrency(totalActual),
+      '{{totalVariance}}': formatPercentage(totalVariance),
+      '{{totalVarianceClass}}': getVarianceClass(totalVariance)
+    };
+
+    // Replace simple placeholders
+    Object.entries(replacements).forEach(([placeholder, value]) => {
+      htmlTemplate = htmlTemplate.replace(new RegExp(placeholder, 'g'), value);
+    });
+
+    // Handle conditional line items rendering
+    if (lineItems.length > 0) {
+      htmlTemplate = htmlTemplate.replace('{{#if hasLineItems}}', '');
+      htmlTemplate = htmlTemplate.replace('{{else}}', '<!--');
+      htmlTemplate = htmlTemplate.replace('{{/if}}', '-->');
+      
+      // Generate line items HTML
+      let lineItemsHtml = '';
+      processedLineItems.forEach(item => {
+        lineItemsHtml += `
+        <tr>
+          <td>${item.description}</td>
+          <td style="text-align: right;" class="amount">${item.estimatedCost}</td>
+          <td style="text-align: right;" class="amount">${item.actualCost}</td>
+          <td style="text-align: right;" class="${item.varianceClass}">${item.variance}</td>
+        </tr>`;
+      });
+      htmlTemplate = htmlTemplate.replace('{{#each lineItems}}', '');
+      htmlTemplate = htmlTemplate.replace('{{/each}}', '');
+      htmlTemplate = htmlTemplate.replace(/<tr>\s*<td>\{\{this\.description\}\}<\/td>[\s\S]*?<\/tr>/g, lineItemsHtml);
+    } else {
+      htmlTemplate = htmlTemplate.replace('{{#if hasLineItems}}', '<!--');
+      htmlTemplate = htmlTemplate.replace('{{else}}', '');
+      htmlTemplate = htmlTemplate.replace('{{/if}}', '');
+    }
+
+    // Generate PDF using Puppeteer
+    console.log('🔄 Launching Puppeteer browser...');
+    const browser = await puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
+
+    const page = await browser.newPage();
+    await page.setContent(htmlTemplate, { waitUntil: 'networkidle0' });
+    
+    const pdfBuffer = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      margin: {
+        top: '20px',
+        right: '20px',
+        bottom: '20px',
+        left: '20px'
+      }
+    });
+
+    await browser.close();
+
+    // Set headers and send PDF
+    const filename = `Quote-${quote.quoteName.replace(/[^a-zA-Z0-9-_]/g, '_')}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
+
+    console.log('✅ PDF generated successfully:', filename);
+    res.send(pdfBuffer);
+
+  } catch (error) {
+    console.error('❌ Error generating PDF:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to generate PDF report'
+    });
+  }
+});
+
+// Line Items API Endpoints
+
+// Get all line items for a specific quote
+app.get('/api/quotes/:quoteId/line-items', requireAuth, (req, res) => {
+  console.log('🔍 GET /api/quotes/:quoteId/line-items - Request received for user:', req.session.userId);
+  console.log('Quote ID:', req.params.quoteId);
+  
+  const quoteId = parseInt(req.params.quoteId);
+  const userId = req.session.userId;
+
+  if (!quoteId || isNaN(quoteId)) {
+    console.log('❌ Validation failed: Invalid quote ID');
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Invalid quote ID' 
+    });
+  }
+
+  // First verify the quote belongs to the user
+  db.get(
+    'SELECT id FROM quotes WHERE id = ? AND user_id = ?',
+    [quoteId, userId],
+    (err, quote) => {
+      if (err) {
+        console.error('❌ Database error:', err);
+        return res.status(500).json({ 
+          success: false, 
+          error: 'Database error while verifying quote ownership' 
+        });
+      }
+
+      if (!quote) {
+        console.log('❌ Quote not found or access denied');
+        return res.status(404).json({ 
+          success: false, 
+          error: 'Quote not found or access denied' 
+        });
+      }
+
+      // Get line items for this quote
+      db.all(
+        `SELECT id, description, estimatedCost, actualCost, created_at, updated_at 
+         FROM line_items 
+         WHERE quoteId = ? AND user_id = ? 
+         ORDER BY created_at ASC`,
+        [quoteId, userId],
+        (err, lineItems) => {
+          if (err) {
+            console.error('❌ Database error:', err);
+            return res.status(500).json({ 
+              success: false, 
+              error: 'Database error while fetching line items' 
+            });
+          }
+
+          console.log(`✅ Line items fetched successfully: ${lineItems.length} items`);
+          res.json({
+            success: true,
+            lineItems: lineItems || [],
+            count: lineItems ? lineItems.length : 0
+          });
+        }
+      );
+    }
+  );
+});
+
+// Create a new line item for a specific quote
+app.post('/api/quotes/:quoteId/line-items', checkPermission(['Admin', 'Member']), (req, res) => {
+  console.log('🔍 POST /api/quotes/:quoteId/line-items - Request received for user:', req.session.userId);
+  console.log('Quote ID:', req.params.quoteId);
+  console.log('Request body:', req.body);
+  
+  const quoteId = parseInt(req.params.quoteId);
+  const userId = req.session.userId;
+  const { description, estimatedCost = 0, actualCost = 0 } = req.body;
+
+  if (!quoteId || isNaN(quoteId)) {
+    console.log('❌ Validation failed: Invalid quote ID');
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Invalid quote ID' 
+    });
+  }
+
+  if (!description || description.trim() === '') {
+    console.log('❌ Validation failed: Description is required');
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Description is required' 
+    });
+  }
+
+  // First verify the quote belongs to the user
+  db.get(
+    'SELECT id FROM quotes WHERE id = ? AND user_id = ?',
+    [quoteId, userId],
+    (err, quote) => {
+      if (err) {
+        console.error('❌ Database error:', err);
+        return res.status(500).json({ 
+          success: false, 
+          error: 'Database error while verifying quote ownership' 
+        });
+      }
+
+      if (!quote) {
+        console.log('❌ Quote not found or access denied');
+        return res.status(404).json({ 
+          success: false, 
+          error: 'Quote not found or access denied' 
+        });
+      }
+
+      // Create the line item
+      db.run(
+        `INSERT INTO line_items (description, estimatedCost, actualCost, quoteId, user_id, created_at, updated_at) 
+         VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+        [description, estimatedCost, actualCost, quoteId, userId],
+        function (err) {
+          if (err) {
+            console.error('❌ Database error:', err);
+            return res.status(500).json({ 
+              success: false, 
+              error: 'Database error while creating line item' 
+            });
+          }
+
+          console.log('✅ Line item created successfully with ID:', this.lastID);
+          
+          // Return the created line item
+          db.get(
+            'SELECT id, description, estimatedCost, actualCost, created_at, updated_at FROM line_items WHERE id = ?',
+            [this.lastID],
+            (err, lineItem) => {
+              if (err) {
+                console.error('❌ Error fetching created line item:', err);
+                return res.status(500).json({ 
+                  success: false, 
+                  error: 'Line item created but error fetching details' 
+                });
+              }
+
+              res.status(201).json({
+                success: true,
+                message: 'Line item created successfully',
+                lineItem: lineItem
+              });
+            }
+          );
+        }
+      );
+    }
+  );
+});
+
+// Update a specific line item
+app.put('/api/line-items/:itemId', checkPermission(['Admin', 'Member']), (req, res) => {
+  console.log('🔍 PUT /api/line-items/:itemId - Request received for user:', req.session.userId);
+  console.log('Item ID:', req.params.itemId);
+  console.log('Request body:', req.body);
+  
+  const itemId = parseInt(req.params.itemId);
+  const userId = req.session.userId;
+  const { description, estimatedCost, actualCost } = req.body;
+
+  if (!itemId || isNaN(itemId)) {
+    console.log('❌ Validation failed: Invalid item ID');
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Invalid line item ID' 
+    });
+  }
+
+  if (!description || description.trim() === '') {
+    console.log('❌ Validation failed: Description is required');
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Description is required' 
+    });
+  }
+
+  // First verify the line item belongs to the user
+  db.get(
+    'SELECT id, quoteId FROM line_items WHERE id = ? AND user_id = ?',
+    [itemId, userId],
+    (err, lineItem) => {
+      if (err) {
+        console.error('❌ Database error:', err);
+        return res.status(500).json({ 
+          success: false, 
+          error: 'Database error while verifying line item ownership' 
+        });
+      }
+
+      if (!lineItem) {
+        console.log('❌ Line item not found or access denied');
+        return res.status(404).json({ 
+          success: false, 
+          error: 'Line item not found or access denied' 
+        });
+      }
+
+      // Update the line item
+      db.run(
+        `UPDATE line_items 
+         SET description = ?, estimatedCost = ?, actualCost = ?, updated_at = datetime('now')
+         WHERE id = ? AND user_id = ?`,
+        [description, estimatedCost || 0, actualCost || 0, itemId, userId],
+        function (err) {
+          if (err) {
+            console.error('❌ Database error:', err);
+            return res.status(500).json({ 
+              success: false, 
+              error: 'Database error while updating line item' 
+            });
+          }
+
+          if (this.changes === 0) {
+            console.log('❌ No changes made to line item');
+            return res.status(404).json({ 
+              success: false, 
+              error: 'Line item not found or no changes made' 
+            });
+          }
+
+          console.log('✅ Line item updated successfully');
+          
+          // Return the updated line item
+          db.get(
+            'SELECT id, description, estimatedCost, actualCost, created_at, updated_at FROM line_items WHERE id = ?',
+            [itemId],
+            (err, updatedLineItem) => {
+              if (err) {
+                console.error('❌ Error fetching updated line item:', err);
+                return res.status(500).json({ 
+                  success: false, 
+                  error: 'Line item updated but error fetching details' 
+                });
+              }
+
+              res.json({
+                success: true,
+                message: 'Line item updated successfully',
+                lineItem: updatedLineItem
+              });
+            }
+          );
+        }
+      );
+    }
+  );
+});
+
+// Delete a specific line item
+app.delete('/api/line-items/:itemId', checkPermission(['Admin', 'Member']), (req, res) => {
+  console.log('🔍 DELETE /api/line-items/:itemId - Request received for user:', req.session.userId);
+  console.log('Item ID:', req.params.itemId);
+  
+  const itemId = parseInt(req.params.itemId);
+  const userId = req.session.userId;
+
+  if (!itemId || isNaN(itemId)) {
+    console.log('❌ Validation failed: Invalid item ID');
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Invalid line item ID' 
+    });
+  }
+
+  // First verify the line item belongs to the user and get its details
+  db.get(
+    'SELECT id, description, quoteId FROM line_items WHERE id = ? AND user_id = ?',
+    [itemId, userId],
+    (err, lineItem) => {
+      if (err) {
+        console.error('❌ Database error:', err);
+        return res.status(500).json({ 
+          success: false, 
+          error: 'Database error while verifying line item ownership' 
+        });
+      }
+
+      if (!lineItem) {
+        console.log('❌ Line item not found or access denied');
+        return res.status(404).json({ 
+          success: false, 
+          error: 'Line item not found or access denied' 
+        });
+      }
+
+      // Delete the line item
+      db.run(
+        'DELETE FROM line_items WHERE id = ? AND user_id = ?',
+        [itemId, userId],
+        function (err) {
+          if (err) {
+            console.error('❌ Database error:', err);
+            return res.status(500).json({ 
+              success: false, 
+              error: 'Database error while deleting line item' 
+            });
+          }
+
+          if (this.changes === 0) {
+            console.log('❌ No line item was deleted');
+            return res.status(404).json({ 
+              success: false, 
+              error: 'Line item not found' 
+            });
+          }
+
+          console.log('✅ Line item deleted successfully');
+          res.json({
+            success: true,
+            message: 'Line item deleted successfully',
+            deletedLineItem: lineItem
+          });
+        }
+      );
+    }
+  );
+});
+
+// AI Analysis endpoint with RAG capabilities
+app.post('/api/ai-analysis', requireAuth, async (req, res) => {
+  console.log('🤖 AI Analysis request from user:', req.session.userId);
+  
+  const { quote, lineItems } = req.body;
+  
+  if (!quote || !Array.isArray(lineItems)) {
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Quote and lineItems are required' 
+    });
+  }
+
+  try {
+    // Part 1: Format the private quote data
+    const privateData = formatQuoteAnalysisData(quote, lineItems);
+    
+    // Part 2: Get relevant general knowledge from Supabase
+    let knowledgeContext = '';
+    if (supabase && embedder) {
+      try {
+        // Create a search query based on the quote context
+        const searchQuery = `construction finance profit margin budget analysis ${quote.status} cost management`;
+        knowledgeContext = await getRelevantKnowledge(searchQuery);
+      } catch (error) {
+        console.warn('⚠️  Knowledge search failed for AI analysis:', error.message);
+      }
+    }
+    
+    // Part 3: Construct the expert-level Gemini prompt
+    const prompt = buildFinancialAnalysisPrompt(privateData, knowledgeContext);
+    
+    // Part 4: Call Gemini API
+    const geminiApiKey = process.env.VITE_GEMINI_API_KEY;
+    if (!geminiApiKey) {
+      throw new Error('Gemini API key not configured');
+    }
+
+    const geminiResponse = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{ text: prompt }]
+          }],
+          generationConfig: {
+            temperature: 0.7,
+            topK: 40,
+            topP: 0.95,
+            maxOutputTokens: 1024,
+          }
+        })
+      }
+    );
+
+    if (!geminiResponse.ok) {
+      const errorText = await geminiResponse.text();
+      console.error('❌ Gemini API Error:', geminiResponse.status, errorText);
+      throw new Error(`AI analysis failed: ${geminiResponse.status}`);
+    }
+
+    const geminiData = await geminiResponse.json();
+    const candidate = geminiData.candidates?.[0];
+    
+    if (!candidate?.content?.parts?.[0]?.text) {
+      throw new Error('No analysis content received from AI service');
+    }
+
+    const analysisText = candidate.content.parts[0].text;
+    
+    console.log('✅ AI Analysis generated successfully');
+    res.json({
+      success: true,
+      analysis: analysisText,
+      sources: {
+        privateData: true,
+        knowledgeBase: !!knowledgeContext,
+        quoteName: quote.quoteName
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ AI Analysis error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to generate AI analysis: ' + error.message 
+    });
+  }
+});
+
+// Helper function to format quote data for AI analysis
+function formatQuoteAnalysisData(quote, lineItems) {
+  const totalEstimatedCost = lineItems.reduce((sum, item) => sum + (item.estimatedCost || 0), 0);
+  const totalActualCost = lineItems.reduce((sum, item) => sum + (item.actualCost || 0), 0);
+  const profitMargin = totalActualCost > 0 ? ((quote.quoteTotal - totalActualCost) / totalActualCost) * 100 : 0;
+  
+  let formattedData = `Quote: "${quote.quoteName}"\n`;
+  formattedData += `Status: ${quote.status}\n`;
+  formattedData += `Quote Total: $${quote.quoteTotal.toLocaleString()}\n`;
+  formattedData += `Total Estimated Cost: $${totalEstimatedCost.toLocaleString()}\n`;
+  formattedData += `Total Actual Cost: $${totalActualCost.toLocaleString()}\n`;
+  formattedData += `Current Profit Margin: ${profitMargin.toFixed(1)}%\n\n`;
+  
+  formattedData += `Line Items (${lineItems.length} total):\n`;
+  lineItems.forEach((item, index) => {
+    const variance = item.estimatedCost > 0 ? ((item.actualCost - item.estimatedCost) / item.estimatedCost) * 100 : 0;
+    formattedData += `${index + 1}. ${item.description}\n`;
+    formattedData += `   Estimated: $${item.estimatedCost.toLocaleString()} | Actual: $${item.actualCost.toLocaleString()} | Variance: ${variance.toFixed(1)}%\n`;
+  });
+  
+  return formattedData;
+}
+
+// Helper function to build the financial analysis prompt
+function buildFinancialAnalysisPrompt(privateData, knowledgeContext) {
+  let prompt = `You are an expert construction finance analyst with deep industry experience. Based on the following private quote data and general industry knowledge, provide a bulleted list of 3-5 key insights. Focus on major risks (e.g., high-variance items, low profit margin, cost overruns), potential opportunities for cost savings, and overall financial health of the quote.
+
+Your response should be formatted as a bulleted list with each insight clearly marked with • and categorized as either:
+- 🟢 POSITIVE: Good financial indicators or opportunities
+- 🟡 WARNING: Areas of concern that need attention  
+- 🔴 RISK: Significant financial risks that require immediate action
+- 💡 RECOMMENDATION: Specific actionable advice
+
+PRIVATE QUOTE DATA:
+${privateData}
+
+`;
+
+  if (knowledgeContext) {
+    prompt += `GENERAL INDUSTRY KNOWLEDGE:
+${knowledgeContext}
+
+`;
+  }
+
+  prompt += `Provide your analysis now, focusing on the most critical financial insights for this construction quote:`;
+  
+  return prompt;
+}
+
+// Team Management API Endpoints
+
+// Helper function to generate secure invitation token
+function generateInvitationToken() {
+  return crypto.randomBytes(32).toString('hex');
+}
+
+// Helper function to send invitation email
+async function sendInvitationEmail(email, token, inviterName, role) {
+  if (!resend) {
+    throw new Error('Email service not configured');
+  }
+
+  const inviteUrl = `${process.env.FRONTEND_URL || 'http://localhost:5174'}/accept-invite/${token}`;
+  
+  const { data, error } = await resend.emails.send({
+    from: 'Blueprint Team <onboarding@resend.dev>',
+    to: [email],
+    subject: 'You\'ve been invited to join Blueprint',
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <div style="text-align: center; margin-bottom: 30px;">
+          <h1 style="color: #3b82f6; margin: 0;">Blueprint</h1>
+          <p style="color: #6b7280; margin: 5px 0;">Construction Project Management</p>
+        </div>
+        
+        <div style="background: #f8fafc; padding: 30px; border-radius: 10px; margin-bottom: 30px;">
+          <h2 style="color: #1f2937; margin-top: 0;">You're invited!</h2>
+          <p style="color: #4b5563; line-height: 1.6;">
+            <strong>${inviterName}</strong> has invited you to join their team on Blueprint as a <strong>${role}</strong>.
+          </p>
+          <p style="color: #4b5563; line-height: 1.6;">
+            Blueprint is a comprehensive construction project management platform that helps teams manage projects, quotes, and workflows efficiently.
+          </p>
+        </div>
+        
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${inviteUrl}" 
+             style="background: linear-gradient(135deg, #3b82f6, #8b5cf6); 
+                    color: white; 
+                    padding: 15px 30px; 
+                    text-decoration: none; 
+                    border-radius: 8px; 
+                    font-weight: bold;
+                    display: inline-block;">
+            Accept Invitation
+          </a>
+        </div>
+        
+        <div style="border-top: 1px solid #e5e7eb; padding-top: 20px; text-align: center; color: #6b7280; font-size: 14px;">
+          <p>This invitation will expire in 7 days.</p>
+          <p>If you didn't expect this invitation, you can safely ignore this email.</p>
+        </div>
+      </div>
+    `
+  });
+
+  if (error) {
+    console.error('Resend API Error:', error);
+    
+    // Check if it's the sandbox restriction error
+    if (error.statusCode === 403 && error.message.includes('testing emails')) {
+      throw new Error(`Email sending is restricted to verified addresses. For testing, use 'carriedo78@gmail.com' or verify a domain at resend.com/domains to send to any email address.`);
+    }
+    
+    throw new Error(`Failed to send email: ${error.message || JSON.stringify(error)}`);
+  }
+
+  console.log('✅ Email sent successfully:', data);
+  return data;
+}
+
+// Send invitation email with attempt tracking
+async function sendInvitationEmailWithTracking(invitationId, email, token, inviterName, role) {
+  try {
+    // Increment attempt counter before sending
+    await new Promise((resolve, reject) => {
+      db.run(
+        'UPDATE invitations SET email_attempts = email_attempts + 1, last_attempt_at = datetime("now") WHERE id = ?',
+        [invitationId],
+        function(err) {
+          if (err) reject(err);
+          else resolve();
+        }
+      );
+    });
+
+    // Send the email
+    const result = await sendInvitationEmail(email, token, inviterName, role);
+    
+    // Mark as successfully sent
+    await new Promise((resolve, reject) => {
+      db.run(
+        'UPDATE invitations SET status = "sent" WHERE id = ?',
+        [invitationId],
+        function(err) {
+          if (err) reject(err);
+          else resolve();
+        }
+      );
+    });
+
+    return result;
+  } catch (error) {
+    // Mark as failed but keep the invitation record for potential retry
+    await new Promise((resolve, reject) => {
+      db.run(
+        'UPDATE invitations SET status = "failed" WHERE id = ?',
+        [invitationId],
+        function(err) {
+          if (err) console.error('Error updating failed invitation status:', err);
+          resolve(); // Don't reject here, we want to throw the original error
+        }
+      );
+    });
+
+    throw error; // Re-throw the original email error
+  }
+}
+
+// Send team invitation (Admin only)
+app.post('/api/team/invite', checkPermission(['Admin']), async (req, res) => {
+  const { email, role } = req.body;
+  const inviterId = req.session.userId;
+
+  // Validate input
+  if (!email || !role) {
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Email and role are required' 
+    });
+  }
+
+  // Validate role
+  const validRoles = ['Admin', 'Member', 'View-Only'];
+  if (!validRoles.includes(role)) {
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Invalid role. Must be Admin, Member, or View-Only' 
+    });
+  }
+
+  // Validate email format
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Invalid email format' 
+    });
+  }
+
+  try {
+    // Check if user already exists (allow testing with specific email)
+    const existingUser = await new Promise((resolve, reject) => {
+      db.get('SELECT id, email FROM users WHERE email = ?', [email], (err, row) => {
+        if (err) reject(err);
+        else resolve(row);
+      });
+    });
+
+    if (existingUser && email !== 'carriedo78@gmail.com') {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'User with this email already exists' 
+      });
+    }
+
+    // Check for existing invitations and rate limiting
+    const invitationHistory = await new Promise((resolve, reject) => {
+      db.all(
+        `SELECT id, status, created_at, expires_at, email_attempts 
+         FROM invitations 
+         WHERE email = ? 
+         AND created_at > datetime('now', '-1 hour')
+         ORDER BY created_at DESC`, 
+        [email], 
+        (err, rows) => {
+          if (err) reject(err);
+          else resolve(rows || []);
+        }
+      );
+    });
+
+    // Count recent attempts (within last hour) - skip rate limiting for testing email
+    const recentAttempts = invitationHistory.length;
+    const maxAttemptsPerHour = 3;
+
+    if (recentAttempts >= maxAttemptsPerHour && email !== 'carriedo78@gmail.com') {
+      return res.status(429).json({ 
+        success: false, 
+        error: `Too many invitation attempts. Please wait before sending another invitation to ${email}.` 
+      });
+    }
+
+    // Check if there's a valid pending/sent invitation
+    const validInvitation = invitationHistory.find(inv => 
+      (inv.status === 'pending' || inv.status === 'sent') && 
+      new Date(inv.expires_at) > new Date()
+    );
+
+    // Check for failed invitations that can be retried
+    const failedInvitation = invitationHistory.find(inv => 
+      (inv.status === 'failed' || (inv.status === 'pending' && (inv.email_attempts || 0) === 0)) && 
+      new Date(inv.expires_at) > new Date()
+    );
+
+    // If there's a valid invitation that was successfully sent, prevent duplicate (except for testing email)
+    if (validInvitation && validInvitation.status === 'sent' && email !== 'carriedo78@gmail.com') {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'A valid invitation has already been sent to this email' 
+      });
+    }
+
+    let invitationId;
+    let token;
+    
+    // Get inviter's name for email
+    const inviter = await new Promise((resolve, reject) => {
+      db.get('SELECT name FROM users WHERE id = ?', [inviterId], (err, row) => {
+        if (err) reject(err);
+        else resolve(row);
+      });
+    });
+
+    // If there's a failed invitation, reuse it; otherwise create new one (always create new for testing email)
+    if (failedInvitation && email !== 'carriedo78@gmail.com') {
+      // Reuse existing failed invitation
+      invitationId = failedInvitation.id;
+      token = await new Promise((resolve, reject) => {
+        db.get('SELECT token FROM invitations WHERE id = ?', [invitationId], (err, row) => {
+          if (err) reject(err);
+          else resolve(row?.token);
+        });
+      });
+      
+      // Update the invitation with new role if different
+      await new Promise((resolve, reject) => {
+        db.run(
+          'UPDATE invitations SET role = ?, last_attempt_at = datetime("now") WHERE id = ?',
+          [role, invitationId],
+          function(err) {
+            if (err) reject(err);
+            else resolve();
+          }
+        );
+      });
+    } else {
+      // Create new invitation
+      token = generateInvitationToken();
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 7);
+      
+      invitationId = await new Promise((resolve, reject) => {
+        db.run(
+          'INSERT INTO invitations (email, token, role, inviterId, expires_at, last_attempt_at) VALUES (?, ?, ?, ?, ?, datetime("now"))',
+          [email, token, role, inviterId, expiresAt.toISOString()],
+          function(err) {
+            if (err) reject(err);
+            else resolve(this.lastID);
+          }
+        );
+      });
+    }
+
+    // Send invitation email and track the attempt
+    await sendInvitationEmailWithTracking(invitationId, email, token, inviter.name, role);
+
+    // Get the expiration date from the database
+    const invitationDetails = await new Promise((resolve, reject) => {
+      db.get('SELECT expires_at FROM invitations WHERE id = ?', [invitationId], (err, row) => {
+        if (err) reject(err);
+        else resolve(row);
+      });
+    });
+
+    res.json({
+      success: true,
+      message: 'Invitation sent successfully',
+      data: {
+        email,
+        role,
+        expiresAt: invitationDetails.expires_at
+      }
+    });
+
+  } catch (error) {
+    console.error('Error sending invitation:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to send invitation. Please try again.'
+    });
+  }
+});
+
+// Get team members (Admin only)
+app.get('/api/team/members', checkPermission(['Admin']), (req, res) => {
+  // For now, we'll return all users. In a multi-tenant system, 
+  // you'd filter by organization/company
+  db.all(
+    'SELECT id, email, name, profilePictureUrl, role, created_at FROM users ORDER BY created_at DESC',
+    [],
+    (err, users) => {
+      if (err) {
+        console.error('Error fetching team members:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'Failed to fetch team members'
+        });
+      }
+
+      res.json({
+        success: true,
+        data: users
+      });
+    }
+  );
+});
+
+// Update team member role (Admin only)
+app.put('/api/team/members/:userId', checkPermission(['Admin']), (req, res) => {
+  const { userId } = req.params;
+  const { role } = req.body;
+  const currentUserId = req.session.userId;
+
+  // Validate role
+  const validRoles = ['Admin', 'Member', 'View-Only'];
+  if (!validRoles.includes(role)) {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid role. Must be Admin, Member, or View-Only'
+    });
+  }
+
+  // Prevent user from changing their own role
+  if (parseInt(userId) === currentUserId) {
+    return res.status(400).json({
+      success: false,
+      error: 'You cannot change your own role'
+    });
+  }
+
+  // Check if user exists
+  db.get('SELECT id, email, name FROM users WHERE id = ?', [userId], (err, user) => {
+    if (err) {
+      console.error('Error checking user:', err);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to update user role'
+      });
+    }
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found'
+      });
+    }
+
+    // Update user role
+    db.run(
+      'UPDATE users SET role = ?, updated_at = datetime("now") WHERE id = ?',
+      [role, userId],
+      function(err) {
+        if (err) {
+          console.error('Error updating user role:', err);
+          return res.status(500).json({
+            success: false,
+            error: 'Failed to update user role'
+          });
+        }
+
+        if (this.changes === 0) {
+          return res.status(404).json({
+            success: false,
+            error: 'User not found'
+          });
+        }
+
+        res.json({
+          success: true,
+          message: `${user.name}'s role updated to ${role}`,
+          data: {
+            userId: parseInt(userId),
+            email: user.email,
+            name: user.name,
+            role: role
+          }
+        });
+      }
+    );
+  });
+});
+
+// Delete team member (Admin only)
+app.delete('/api/team/members/:userId', checkPermission(['Admin']), (req, res) => {
+  const { userId } = req.params;
+  const currentUserId = req.session.userId;
+
+  // Prevent user from deleting themselves
+  if (parseInt(userId) === currentUserId) {
+    return res.status(400).json({
+      success: false,
+      error: 'You cannot delete your own account'
+    });
+  }
+
+  // Check if user exists and get their info
+  db.get('SELECT id, email, name FROM users WHERE id = ?', [userId], (err, user) => {
+    if (err) {
+      console.error('Error checking user:', err);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to delete user'
+      });
+    }
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found'
+      });
+    }
+
+    // Delete user (this will cascade delete their data due to foreign key constraints)
+    db.run('DELETE FROM users WHERE id = ?', [userId], function(err) {
+      if (err) {
+        console.error('Error deleting user:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'Failed to delete user'
+        });
+      }
+
+      if (this.changes === 0) {
+        return res.status(404).json({
+          success: false,
+          error: 'User not found'
+        });
+      }
+
+      res.json({
+        success: true,
+        message: `${user.name} has been removed from the team`,
+        data: {
+          deletedUser: {
+            id: user.id,
+            email: user.email,
+            name: user.name
+          }
+        }
+      });
+    });
+  });
+});
+
+// Invitation Acceptance API Endpoints (Public - no auth required)
+
+// Verify invitation token (public endpoint)
+app.get('/api/invitations/:token', (req, res) => {
+  const { token } = req.params;
+
+  if (!token) {
+    return res.status(400).json({
+      success: false,
+      error: 'Token is required'
+    });
+  }
+
+  // Look up the invitation by token
+  db.get(
+    `SELECT inv.*, u.name as inviter_name, u.email as inviter_email 
+     FROM invitations inv 
+     LEFT JOIN users u ON inv.inviterId = u.id 
+     WHERE inv.token = ? AND inv.status IN ('pending', 'sent', 'failed') AND inv.expires_at > datetime('now')`,
+    [token],
+    (err, invitation) => {
+      if (err) {
+        console.error('Error verifying invitation token:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'Database error while verifying invitation'
+        });
+      }
+
+      if (!invitation) {
+        return res.status(404).json({
+          success: false,
+          error: 'Invalid or expired invitation'
+        });
+      }
+
+      // Return invitation details (without sensitive data)
+      res.json({
+        success: true,
+        data: {
+          email: invitation.email,
+          role: invitation.role,
+          inviterName: invitation.inviter_name || 'Unknown',
+          inviterEmail: invitation.inviter_email,
+          createdAt: invitation.created_at,
+          expiresAt: invitation.expires_at
+        }
+      });
+    }
+  );
+});
+
+// Accept invitation and create user account (public endpoint)
+app.post('/api/invitations/accept', async (req, res) => {
+  const { token, userData } = req.body;
+
+  if (!token || !userData) {
+    return res.status(400).json({
+      success: false,
+      error: 'Token and user data are required'
+    });
+  }
+
+  try {
+    // Start a database transaction to ensure atomicity
+    const result = await new Promise((resolve, reject) => {
+      db.serialize(() => {
+        db.run('BEGIN TRANSACTION');
+
+        // First, verify the invitation token again
+        db.get(
+          `SELECT * FROM invitations 
+           WHERE token = ? AND status IN ('pending', 'sent', 'failed') AND expires_at > datetime('now')`,
+          [token],
+          (err, invitation) => {
+            if (err) {
+              db.run('ROLLBACK');
+              return reject(new Error('Database error during token verification'));
+            }
+
+            if (!invitation) {
+              db.run('ROLLBACK');
+              return reject(new Error('Invalid or expired invitation'));
+            }
+
+            // Check if user already exists
+            db.get(
+              'SELECT id FROM users WHERE email = ?',
+              [userData.email],
+              (err, existingUser) => {
+                if (err) {
+                  db.run('ROLLBACK');
+                  return reject(new Error('Database error checking existing user'));
+                }
+
+                if (existingUser) {
+                  db.run('ROLLBACK');
+                  // Special handling for testing email
+                  if (userData.email === 'carriedo78@gmail.com') {
+                    return reject(new Error('TESTING_MODE_DUPLICATE'));
+                  }
+                  return reject(new Error('User with this email already exists'));
+                }
+
+                // Create the new user with the role from the invitation
+                db.run(
+                  `INSERT INTO users (googleId, email, name, profilePictureUrl, provider, role, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+                  [
+                    userData.googleId,
+                    userData.email,
+                    userData.name,
+                    userData.profilePictureUrl,
+                    userData.provider || 'google',
+                    invitation.role
+                  ],
+                  function(err) {
+                    if (err) {
+                      db.run('ROLLBACK');
+                      return reject(new Error('Failed to create user account'));
+                    }
+
+                    const newUserId = this.lastID;
+
+                    // Mark the invitation as used
+                    db.run(
+                      `UPDATE invitations 
+                       SET status = 'accepted', used_at = datetime('now') 
+                       WHERE token = ?`,
+                      [token],
+                      (err) => {
+                        if (err) {
+                          db.run('ROLLBACK');
+                          return reject(new Error('Failed to update invitation status'));
+                        }
+
+                        // Commit the transaction
+                        db.run('COMMIT', (err) => {
+                          if (err) {
+                            return reject(new Error('Failed to commit transaction'));
+                          }
+
+                          // Create session for the new user
+                          req.session.userId = newUserId;
+                          req.session.save((err) => {
+                            if (err) {
+                              console.error('Session save error:', err);
+                            }
+                          });
+
+                          resolve({
+                            userId: newUserId,
+                            user: {
+                              id: newUserId,
+                              googleId: userData.googleId,
+                              email: userData.email,
+                              name: userData.name,
+                              profilePictureUrl: userData.profilePictureUrl,
+                              provider: userData.provider || 'google',
+                              role: invitation.role
+                            }
+                          });
+                        });
+                      }
+                    );
+                  }
+                );
+              }
+            );
+          }
+        );
+      });
+    });
+
+    res.json({
+      success: true,
+      message: 'Account created successfully and invitation accepted',
+      user: result.user
+    });
+
+  } catch (error) {
+    console.error('Error accepting invitation:', error);
+    res.status(400).json({
+      success: false,
+      error: error.message || 'Failed to accept invitation'
+    });
+  }
 });
 
 // Endpoint to add/find user (legacy endpoint, keeping for compatibility)

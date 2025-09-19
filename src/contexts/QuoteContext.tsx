@@ -28,16 +28,16 @@ interface QuoteContextType {
     quoteTotal?: number;
     budget?: number;
   }) => Promise<Quote>;
-  updateQuote: (quoteId: number, updatedData: {
+  updateQuote: (quoteId: number, updatedData: Partial<{
     quoteName: string;
-    status?: string;
-    timeToDevelop?: string;
-    timeToDevelopValue?: number;
-    timeToDevelopUnit?: string;
-    variancePercentage?: number;
-    quoteTotal?: number;
-    budget?: number;
-  }) => Promise<Quote>;
+    status: string;
+    timeToDevelop: string;
+    timeToDevelopValue: number;
+    timeToDevelopUnit: string;
+    variancePercentage: number;
+    quoteTotal: number;
+    budget: number;
+  }>) => Promise<Quote>;
   deleteQuote: (quoteId: number) => Promise<void>;
   refreshQuotes: () => Promise<void>;
 }
@@ -158,16 +158,16 @@ export const QuoteProvider: React.FC<QuoteProviderProps> = ({ children }) => {
     }
   }, []);
 
-  const updateQuote = useCallback(async (quoteId: number, updatedData: {
+  const updateQuote = useCallback(async (quoteId: number, updatedData: Partial<{
     quoteName: string;
-    status?: string;
-    timeToDevelop?: string;
-    timeToDevelopValue?: number;
-    timeToDevelopUnit?: string;
-    variancePercentage?: number;
-    quoteTotal?: number;
-    budget?: number;
-  }): Promise<Quote> => {
+    status: string;
+    timeToDevelop: string;
+    timeToDevelopValue: number;
+    timeToDevelopUnit: string;
+    variancePercentage: number;
+    quoteTotal: number;
+    budget: number;
+  }>): Promise<Quote> => {
     setError(null);
 
     try {

@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
-import { BrowserRouter as Router } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { ProjectProvider } from './contexts/ProjectState';
 import { QuoteProvider } from './contexts/QuoteContext';
+import { AppProvider, useApp } from './contexts/AppContext';
 import { checkRedirectResult } from './utils/googleAuth';
 import Toast from './components/Toast';
+import ConfirmationModal from './components/ConfirmationModal';
 import Navigation from './components/Navigation';
 import AuthModal from './components/AuthModal';
 import Hero from './components/Hero';
@@ -17,8 +19,11 @@ import Pricing from './components/Pricing';
 import FinalCTA from './components/FinalCTA';
 import Footer from './components/Footer';
 import DashboardLayout from './components/DashboardLayout';
+import AcceptInvitePage from './components/AcceptInvitePage';
 
-function App() {
+// Separate component to access AppContext
+function AppContent() {
+  const { confirmationModal, hideConfirmationModal } = useApp();
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -169,18 +174,31 @@ function App() {
   };
 
   return (
-    <ThemeProvider>
-      <ProjectProvider>
-        <QuoteProvider>
-          <Router>
-          <div className="min-h-screen bg-gray-50 dark:bg-gradient-to-br dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 transition-colors duration-300">
-            <Toast
-              message={toast.message}
-              isVisible={toast.isVisible}
-              onClose={hideToast}
-              type={toast.type}
-            />
-            {isLoggedIn ? (
+    <div className="min-h-screen bg-gray-50 dark:bg-gradient-to-br dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 transition-colors duration-300">
+      <Toast
+        message={toast.message}
+        isVisible={toast.isVisible}
+        onClose={hideToast}
+        type={toast.type}
+      />
+      <ConfirmationModal
+        isOpen={confirmationModal.isOpen}
+        title={confirmationModal.title}
+        message={confirmationModal.message}
+        confirmText={confirmationModal.confirmText}
+        cancelText={confirmationModal.cancelText}
+        type={confirmationModal.type}
+        onConfirm={confirmationModal.onConfirm}
+        onCancel={hideConfirmationModal}
+      />
+      
+      <Routes>
+        {/* Public route for accepting invitations */}
+        <Route path="/accept-invite/:token" element={<AcceptInvitePage />} />
+        
+        {/* Main application routes */}
+        <Route path="/*" element={
+          isLoggedIn ? (
             <DashboardLayout 
               companyName={companyName} 
               updateCompanyName={updateCompanyName}
@@ -201,12 +219,27 @@ function App() {
               <FinalCTA onAuthClick={handleAuthClick} />
               <Footer />
             </>
-          )}
-          </div>
-        </Router>
-        </QuoteProvider>
-      </ProjectProvider>
-    </ThemeProvider>
+          )
+        } />
+      </Routes>
+    </div>
+  );
+}
+
+// Main App component with providers
+function App() {
+  return (
+    <AppProvider>
+      <ThemeProvider>
+        <ProjectProvider>
+          <QuoteProvider>
+            <Router>
+              <AppContent />
+            </Router>
+          </QuoteProvider>
+        </ProjectProvider>
+      </ThemeProvider>
+    </AppProvider>
   );
 }
 
