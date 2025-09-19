@@ -13,7 +13,6 @@ import Hero from './components/Hero';
 import TrustedBy from './components/TrustedBy';
 import Features from './components/Features';
 import AIWizard from './components/AIWizard';
-import Dashboard from './components/Dashboard';
 import Integrations from './components/Integrations';
 import Pricing from './components/Pricing';
 import FinalCTA from './components/FinalCTA';
@@ -213,7 +212,6 @@ function AppContent() {
               <TrustedBy />
               <Features />
               <AIWizard />
-              <Dashboard />
               <Integrations />
               <Pricing />
               <FinalCTA onAuthClick={handleAuthClick} />
