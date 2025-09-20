@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { ChevronDown, FileText, Edit3 } from 'lucide-react';
 import PageHeader from './PageHeader';
 import Card from './Card';
 import Button from './Button';
 import QuoteModal from './QuoteModal';
+import UploadQuoteModal from './UploadQuoteModal';
 import { useQuotes, Quote } from '../contexts/QuoteContext';
 import { useApp } from '../contexts/AppContext';
 
@@ -23,12 +25,16 @@ const QuotesPage = ({ currentUser }: QuotesPageProps) => {
   const { quotes, loading, error, deleteQuote } = useQuotes();
   const { showConfirmationModal } = useApp();
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [quoteToEdit, setQuoteToEdit] = useState<Quote | null>(null);
   const [toast, setToast] = useState<{ message: string; isVisible: boolean; type: 'success' | 'error' }>({ 
     message: '', 
     isVisible: false, 
     type: 'success' 
   });
+  
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Role-based permission check
   const canModifyQuotes = () => {
@@ -48,10 +54,22 @@ const QuotesPage = ({ currentUser }: QuotesPageProps) => {
     setToast(prev => ({ ...prev, isVisible: false }));
   };
 
-  // Handle opening modal for creating new quote
+  // Handle dropdown toggle
+  const handleDropdownToggle = () => {
+    setIsDropdownOpen(!isDropdownOpen);
+  };
+
+  // Handle opening modal for creating new quote manually
   const handleCreateQuote = () => {
     setQuoteToEdit(null);
     setIsModalOpen(true);
+    setIsDropdownOpen(false);
+  };
+
+  // Handle opening upload modal for AI quote creation
+  const handleCreateFromDocument = () => {
+    setIsUploadModalOpen(true);
+    setIsDropdownOpen(false);
   };
 
   // Handle opening modal for editing existing quote
@@ -91,6 +109,28 @@ const QuotesPage = ({ currentUser }: QuotesPageProps) => {
     setQuoteToEdit(null);
   };
 
+  // Handle closing upload modal
+  const handleCloseUploadModal = () => {
+    setIsUploadModalOpen(false);
+  };
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    };
+
+    if (isDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isDropdownOpen]);
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -123,13 +163,45 @@ const QuotesPage = ({ currentUser }: QuotesPageProps) => {
           }
         </p>
         {canModifyQuotes() && (
-          <Button
-            onClick={handleCreateQuote}
-            size="lg"
-            className="px-8"
-          >
-            + Add Your First Quote
-          </Button>
+          <div className="relative">
+            <Button
+              onClick={handleDropdownToggle}
+              size="lg"
+              className="px-8 flex items-center gap-2"
+            >
+              + Add Your First Quote
+              <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isDropdownOpen ? 'rotate-180' : ''}`} />
+            </Button>
+
+            {/* Dropdown Menu for Empty State */}
+            {isDropdownOpen && (
+              <div className="absolute left-1/2 transform -translate-x-1/2 top-full mt-2 w-64 z-50 animate-fade-in">
+                <Card variant="glass" className="py-2 shadow-2xl border-white/20">
+                  <button
+                    onClick={handleCreateQuote}
+                    className="w-full px-4 py-3 text-left hover:bg-white/10 transition-colors duration-200 flex items-center gap-3"
+                  >
+                    <Edit3 className="w-5 h-5 text-blue-400" />
+                    <div>
+                      <div className="font-medium text-white">Create Manually</div>
+                      <div className="text-sm text-slate-400">Build a quote from scratch</div>
+                    </div>
+                  </button>
+                  
+                  <button
+                    onClick={handleCreateFromDocument}
+                    className="w-full px-4 py-3 text-left hover:bg-white/10 transition-colors duration-200 flex items-center gap-3"
+                  >
+                    <FileText className="w-5 h-5 text-purple-400" />
+                    <div>
+                      <div className="font-medium text-white">Create from Document (AI)</div>
+                      <div className="text-sm text-slate-400">Upload and let AI generate</div>
+                    </div>
+                  </button>
+                </Card>
+              </div>
+            )}
+          </div>
         )}
       </div>
     </Card>
@@ -320,12 +392,44 @@ const QuotesPage = ({ currentUser }: QuotesPageProps) => {
         />
         
         {quotes.length > 0 && canModifyQuotes() && (
-          <Button
-            onClick={handleCreateQuote}
-            className="shrink-0"
-          >
-            + New Quote
-          </Button>
+          <div className="relative" ref={dropdownRef}>
+            <Button
+              onClick={handleDropdownToggle}
+              className="shrink-0 flex items-center gap-2"
+            >
+              + New Quote
+              <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isDropdownOpen ? 'rotate-180' : ''}`} />
+            </Button>
+
+            {/* Dropdown Menu */}
+            {isDropdownOpen && (
+              <div className="absolute right-0 top-full mt-2 w-64 z-50 animate-fade-in">
+                <Card variant="glass" className="py-2 shadow-2xl border-white/20">
+                  <button
+                    onClick={handleCreateQuote}
+                    className="w-full px-4 py-3 text-left hover:bg-white/10 transition-colors duration-200 flex items-center gap-3"
+                  >
+                    <Edit3 className="w-5 h-5 text-blue-400" />
+                    <div>
+                      <div className="font-medium text-white">Create Manually</div>
+                      <div className="text-sm text-slate-400">Build a quote from scratch</div>
+                    </div>
+                  </button>
+                  
+                  <button
+                    onClick={handleCreateFromDocument}
+                    className="w-full px-4 py-3 text-left hover:bg-white/10 transition-colors duration-200 flex items-center gap-3"
+                  >
+                    <FileText className="w-5 h-5 text-purple-400" />
+                    <div>
+                      <div className="font-medium text-white">Create from Document (AI)</div>
+                      <div className="text-sm text-slate-400">Upload and let AI generate</div>
+                    </div>
+                  </button>
+                </Card>
+              </div>
+            )}
+          </div>
         )}
       </div>
 
@@ -361,6 +465,13 @@ const QuotesPage = ({ currentUser }: QuotesPageProps) => {
         onClose={handleCloseModal}
         onSuccess={showToast}
         quoteToEdit={quoteToEdit}
+      />
+
+      {/* Upload Quote Modal - AI Creation */}
+      <UploadQuoteModal 
+        isOpen={isUploadModalOpen}
+        onClose={handleCloseUploadModal}
+        onSuccess={showToast}
       />
     </div>
   );

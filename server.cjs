@@ -11,10 +11,23 @@ const fs = require('fs').promises;
 const path = require('path');
 const crypto = require('crypto');
 const { Resend } = require('resend');
+const multer = require('multer');
+const pdfParse = require('pdf-parse');
+const WebSocket = require('ws');
+const http = require('http');
 require('dotenv').config();
 
 const app = express();
 const PORT = 4000;
+
+// Create HTTP server for WebSocket integration
+const server = http.createServer(app);
+
+// WebSocket server setup
+const wss = new WebSocket.Server({ server });
+
+// Map to store active WebSocket connections by user ID
+const activeConnections = new Map();
 
 // Initialize Resend client for email sending
 let resend = null;
@@ -23,6 +36,38 @@ if (process.env.RESEND_API_KEY) {
   console.log('✅ Resend email client initialized');
 } else {
   console.warn('⚠️  RESEND_API_KEY not configured - email invitations will be disabled');
+}
+
+// Configure multer for file uploads (memory storage for temporary processing)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    // Accept text-based files and PDFs
+    const allowedTypes = [
+      'text/plain',
+      'text/markdown',
+      'text/csv',
+      'application/json',
+      'application/pdf'
+    ];
+    
+    if (allowedTypes.includes(file.mimetype) || file.originalname.match(/\.(txt|md|csv|json|pdf)$/i)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only text files (.txt, .md, .csv, .json) and PDF files (.pdf) are supported for AI analysis'));
+    }
+  }
+});
+
+// Initialize Gemini API configuration
+const GEMINI_API_KEY = process.env.VITE_GEMINI_API_KEY;
+if (GEMINI_API_KEY) {
+  console.log('✅ Gemini API key configured for AI analysis');
+} else {
+  console.warn('⚠️  VITE_GEMINI_API_KEY not configured - AI quote analysis will be disabled');
 }
 
 // Initialize Supabase client
@@ -274,6 +319,34 @@ db.serialize(() => {
     FOREIGN KEY (inviterId) REFERENCES users (id)
   )`);
 
+  // Create notifications table for real-time notifications
+  db.run(`CREATE TABLE IF NOT EXISTS notifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    recipientUserId INTEGER NOT NULL,
+    message TEXT NOT NULL,
+    isRead BOOLEAN DEFAULT 0,
+    createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (recipientUserId) REFERENCES users (id)
+  )`, function() {
+    // Add some sample notifications if the table is empty
+    db.get('SELECT COUNT(*) as count FROM notifications', (err, result) => {
+      if (!err && result.count === 0) {
+        console.log('📬 Creating sample notifications...');
+        const sampleNotifications = [
+          'Welcome to Blueprint! Your notification system is now active.',
+          'Your dashboard has been customized for construction project management.',
+          'Tip: Create your first project to start tracking budgets and timelines.'
+        ];
+        
+        sampleNotifications.forEach((message, index) => {
+          setTimeout(() => {
+            db.run('INSERT INTO notifications (recipientUserId, message) VALUES (?, ?)', [1, message]);
+          }, index * 1000); // Stagger notifications by 1 second
+        });
+      }
+    });
+  });
+
   // Insert default company profile if it doesn't exist
   db.run(`INSERT OR IGNORE INTO company_profile (id, company_name) VALUES ('default', 'Company Co')`);
 
@@ -315,6 +388,43 @@ db.serialize(() => {
   console.log('Database tables created/updated successfully');
 });
 
+// WebSocket connection handling
+wss.on('connection', (ws, req) => {
+  console.log('New WebSocket connection established');
+  
+  ws.on('message', (message) => {
+    try {
+      const data = JSON.parse(message);
+      
+      // Handle user authentication for WebSocket
+      if (data.type === 'auth' && data.userId) {
+        ws.userId = data.userId;
+        activeConnections.set(data.userId, ws);
+        console.log(`User ${data.userId} connected via WebSocket`);
+        
+        // Send confirmation
+        ws.send(JSON.stringify({
+          type: 'auth_success',
+          message: 'WebSocket authenticated successfully'
+        }));
+      }
+    } catch (error) {
+      console.error('Error parsing WebSocket message:', error);
+    }
+  });
+  
+  ws.on('close', () => {
+    if (ws.userId) {
+      activeConnections.delete(ws.userId);
+      console.log(`User ${ws.userId} disconnected from WebSocket`);
+    }
+  });
+  
+  ws.on('error', (error) => {
+    console.error('WebSocket error:', error);
+  });
+});
+
 // Test endpoint
 app.get('/api/test', (req, res) => {
   res.json({ 
@@ -323,6 +433,39 @@ app.get('/api/test', (req, res) => {
     session: req.session.userId ? `User ID: ${req.session.userId}` : 'No session'
   });
 });
+
+// Notification helper functions
+const createNotification = (userId, message) => {
+  // Save notification to database
+  db.run(
+    'INSERT INTO notifications (recipientUserId, message) VALUES (?, ?)',
+    [userId, message],
+    function(err) {
+      if (err) {
+        console.error('Error creating notification:', err);
+        return;
+      }
+      
+      const notificationId = this.lastID;
+      console.log(`Notification created: ID ${notificationId} for user ${userId}`);
+      
+      // Check if user is connected via WebSocket and send real-time notification
+      const userConnection = activeConnections.get(userId);
+      if (userConnection && userConnection.readyState === WebSocket.OPEN) {
+        userConnection.send(JSON.stringify({
+          type: 'notification',
+          data: {
+            id: notificationId,
+            message: message,
+            isRead: false,
+            createdAt: new Date().toISOString()
+          }
+        }));
+        console.log(`Real-time notification sent to user ${userId}`);
+      }
+    }
+  );
+};
 
 // Authentication middleware
 const requireAuth = (req, res, next) => {
@@ -581,6 +724,225 @@ app.get('/api/ai-context', requireAuth, async (req, res) => {
     res.status(500).json({ error: 'Failed to generate AI context' });
   }
 });
+
+// Helper function to build enhanced Gemini prompt with few-shot examples
+function buildGeminiPrompt(fileContent, fileName) {
+  return `You are an expert construction finance analyst. Analyze the following text from a document and extract a quoteName and a list of lineItems. Return ONLY a valid JSON object.
+
+**Example 1:**
+Input Text: "Ok, for the main house build, we're looking at framing labor for ten thousand five hundred dollars, and the concrete foundation is gonna be about $15,000."
+Output JSON:
+{
+  "quoteName": "Main House Build",
+  "lineItems": [
+    { "description": "Framing Labor", "estimatedCost": 10500 },
+    { "description": "Concrete Foundation", "estimatedCost": 15000 }
+  ]
+}
+
+**Example 2:**
+Input Text: "Client: John Smith. Project: kitchen remodel. costs roughtly as follows countertop installation 4k... plumbing fixtures 2.5k"
+Output JSON:
+{
+  "quoteName": "John Smith Kitchen Remodel",
+  "lineItems": [
+    { "description": "Countertop Installation", "estimatedCost": 4000 },
+    { "description": "Plumbing Fixtures", "estimatedCost": 2500 }
+  ]
+}
+
+**Example 3:**
+Input Text: "BATHROOM RENOVATION - Materials: tiles $800, vanity cabinet $1200, labor costs: demo 2 days @ $400/day, plumbing $600"
+Output JSON:
+{
+  "quoteName": "Bathroom Renovation",
+  "lineItems": [
+    { "description": "Tiles", "estimatedCost": 800 },
+    { "description": "Vanity Cabinet", "estimatedCost": 1200 },
+    { "description": "Demolition (2 days)", "estimatedCost": 800 },
+    { "description": "Plumbing", "estimatedCost": 600 }
+  ]
+}
+
+**Example 4:**
+Input Text: "Roofing job estimate. shingles about 3500 bucks. gutters roughly $1800. Installation labor approx 2800"
+Output JSON:
+{
+  "quoteName": "Roofing Job Estimate",
+  "lineItems": [
+    { "description": "Shingles", "estimatedCost": 3500 },
+    { "description": "Gutters", "estimatedCost": 1800 },
+    { "description": "Installation Labor", "estimatedCost": 2800 }
+  ]
+}
+
+**IMPORTANT RULES:**
+- Extract costs from text like "5k", "$5,000", "five thousand", "5 grand" as numeric values
+- Generate descriptive quoteName based on project type mentioned
+- Include ALL work items, materials, and labor mentioned
+- If no costs given, provide realistic construction industry estimates
+- Handle messy formatting, typos, and informal language
+- Return ONLY valid JSON, no other text
+
+**Task:**
+Now, analyze the following text and provide the JSON output in the same format.
+
+DOCUMENT NAME: ${fileName}
+
+Input Text: ${fileContent}
+
+Output JSON:`;
+}
+
+// Helper function to call Gemini API for structured data extraction
+async function callGeminiAPI(prompt) {
+  try {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        contents: [{
+          parts: [{
+            text: prompt
+          }]
+        }],
+        generationConfig: {
+          temperature: 0.1,
+          topK: 1,
+          topP: 1,
+          maxOutputTokens: 2048,
+        },
+        safetySettings: [
+          {
+            category: "HARM_CATEGORY_HARASSMENT",
+            threshold: "BLOCK_MEDIUM_AND_ABOVE"
+          },
+          {
+            category: "HARM_CATEGORY_HATE_SPEECH",
+            threshold: "BLOCK_MEDIUM_AND_ABOVE"
+          },
+          {
+            category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+            threshold: "BLOCK_MEDIUM_AND_ABOVE"
+          },
+          {
+            category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+            threshold: "BLOCK_MEDIUM_AND_ABOVE"
+          }
+        ]
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.text();
+      console.error('Gemini API error:', response.status, errorData);
+      throw new Error(`Gemini API request failed: ${response.status}`);
+    }
+
+    const data = await response.json();
+    
+    if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
+      console.error('Invalid Gemini API response structure:', data);
+      throw new Error('Invalid response from Gemini API');
+    }
+
+    const generatedText = data.candidates[0].content.parts[0].text;
+    console.log('🤖 Raw Gemini response:', generatedText);
+
+    // Enhanced JSON parsing with multiple strategies
+    let jsonResult = null;
+    
+    try {
+      // Strategy 1: Try to parse the entire response as JSON
+      jsonResult = JSON.parse(generatedText);
+    } catch (e) {
+      // Strategy 2: Extract JSON from text using regex
+      let jsonMatch = generatedText.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        // Strategy 3: Try to find JSON in code blocks
+        jsonMatch = generatedText.match(/```(?:json)?\s*(\{[\s\S]*\})\s*```/);
+        if (jsonMatch) {
+          jsonMatch[0] = jsonMatch[1];
+        }
+      }
+      
+      if (!jsonMatch) {
+        console.error('❌ No JSON found in AI response:', generatedText);
+        throw new Error('The AI could not understand the document. Please try with a clearer document or different format.');
+      }
+
+      try {
+        jsonResult = JSON.parse(jsonMatch[0]);
+      } catch (parseError) {
+        console.error('❌ JSON parsing failed:', parseError);
+        console.error('❌ Attempted to parse:', jsonMatch[0]);
+        throw new Error('The AI response was malformed. Please try again.');
+      }
+    }
+    
+    // Enhanced validation with detailed error messages
+    if (!jsonResult || typeof jsonResult !== 'object') {
+      throw new Error('The AI could not understand the document structure.');
+    }
+
+    if (!jsonResult.quoteName || typeof jsonResult.quoteName !== 'string' || jsonResult.quoteName.trim() === '') {
+      throw new Error('The AI could not identify a project name from the document.');
+    }
+
+    if (!jsonResult.lineItems || !Array.isArray(jsonResult.lineItems)) {
+      throw new Error('The AI could not identify line items from the document.');
+    }
+
+    if (jsonResult.lineItems.length === 0) {
+      throw new Error('No cost items could be extracted from the document. Please ensure the document contains pricing information.');
+    }
+
+    // Validate and clean line items
+    const validLineItems = [];
+    for (let i = 0; i < jsonResult.lineItems.length; i++) {
+      const item = jsonResult.lineItems[i];
+      
+      if (!item.description || typeof item.description !== 'string' || item.description.trim() === '') {
+        console.warn(`⚠️ Skipping line item ${i + 1}: missing or invalid description`);
+        continue;
+      }
+
+      let cost = item.estimatedCost;
+      if (typeof cost !== 'number' || isNaN(cost) || cost < 0) {
+        console.warn(`⚠️ Line item "${item.description}": invalid cost (${cost}), setting to 0`);
+        cost = 0;
+      }
+
+      validLineItems.push({
+        description: item.description.trim(),
+        estimatedCost: Math.round(cost * 100) / 100 // Round to 2 decimal places
+      });
+    }
+
+    if (validLineItems.length === 0) {
+      throw new Error('No valid cost items could be extracted from the document.');
+    }
+
+    const result = {
+      quoteName: jsonResult.quoteName.trim(),
+      lineItems: validLineItems
+    };
+
+    console.log('✅ Successfully parsed and validated AI response:', {
+      quoteName: result.quoteName,
+      lineItemCount: result.lineItems.length,
+      totalCost: result.lineItems.reduce((sum, item) => sum + item.estimatedCost, 0)
+    });
+
+    return result;
+
+  } catch (error) {
+    console.error('❌ Gemini API call failed:', error);
+    throw error;
+  }
+}
 
 // Helper function to get user's private data from SQLite
 async function getUserPrivateContext(userId) {
@@ -853,6 +1215,10 @@ app.post('/api/projects', checkPermission(['Admin', 'Member']), (req, res) => {
       };
       
       console.log(`✅ Created project "${projectData.name}" for user ${userId} with ID ${this.lastID}`);
+      
+      // Create notification for new project
+      createNotification(userId, `New project "${projectData.name}" has been created`);
+      
       res.status(201).json({ 
         success: true, 
         message: 'Project created successfully',
@@ -1286,6 +1652,10 @@ app.post('/api/quotes', checkPermission(['Admin', 'Member']), (req, res) => {
           }
 
           console.log('✅ Quote created successfully:', quote);
+          
+          // Create notification for new quote
+          createNotification(userId, `New quote "${quote.quoteName}" has been created`);
+          
           res.status(201).json({
             success: true,
             message: 'Quote created successfully',
@@ -1445,6 +1815,10 @@ app.put('/api/quotes/:id', checkPermission(['Admin', 'Member']), (req, res) => {
             }
 
             console.log('✅ Quote updated successfully:', updatedQuote);
+            
+            // Create notification for quote update
+            createNotification(userId, `Quote "${updatedQuote.quoteName}" has been updated`);
+            
             res.json({
               success: true,
               message: 'Quote updated successfully',
@@ -1801,6 +2175,102 @@ app.get('/api/quotes/:id/pdf', requireAuth, async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to generate PDF report'
+    });
+  }
+});
+
+// Upload and analyze document to create quote using AI
+app.post('/api/quotes/upload-and-analyze', requireAuth, upload.single('file'), async (req, res) => {
+  console.log('🤖 AI Quote Analysis request received');
+  
+  if (!GEMINI_API_KEY) {
+    return res.status(503).json({
+      success: false,
+      error: 'AI analysis service is not configured'
+    });
+  }
+  
+  if (!req.file) {
+    return res.status(400).json({
+      success: false,
+      error: 'No file uploaded'
+    });
+  }
+  
+  try {
+    // Extract text content based on file type
+    let fileContent = '';
+    const mimeType = req.file.mimetype;
+    const fileName = req.file.originalname.toLowerCase();
+    
+    console.log(`📄 Processing file: ${req.file.originalname} (${req.file.size} bytes, MIME: ${mimeType})`);
+    
+    if (mimeType === 'application/pdf' || fileName.endsWith('.pdf')) {
+      // Handle PDF files
+      try {
+        const pdfData = await pdfParse(req.file.buffer);
+        fileContent = pdfData.text;
+        console.log('✅ PDF text extracted successfully');
+      } catch (pdfError) {
+        console.error('❌ PDF parsing error:', pdfError);
+        return res.status(400).json({
+          success: false,
+          error: 'Failed to extract text from PDF. Please ensure the PDF contains readable text.'
+        });
+      }
+    } else if (mimeType.startsWith('text/') || fileName.match(/\.(txt|md|csv|json)$/i)) {
+      // Handle text files
+      fileContent = req.file.buffer.toString('utf-8');
+    } else {
+      return res.status(400).json({
+        success: false,
+        error: 'Unsupported file type. Please upload a text file (.txt, .md, .csv, .json) or PDF file (.pdf).'
+      });
+    }
+    
+    if (!fileContent.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: 'File appears to be empty or contains no readable text'
+      });
+    }
+    
+    console.log(`� Extracted ${fileContent.length} characters of text content`);
+    
+    // Construct AI prompt for structured data extraction
+    const prompt = buildGeminiPrompt(fileContent, req.file.originalname);
+    
+    // Call Gemini API for analysis
+    const analysisResult = await callGeminiAPI(prompt);
+    
+    if (!analysisResult) {
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to analyze document with AI'
+      });
+    }
+    
+    console.log('✅ AI analysis completed successfully');
+    
+    // Create notification for AI analysis completion
+    createNotification(userId, `AI analysis completed for "${req.file.originalname}" - ${analysisResult.lineItems?.length || 0} items extracted`);
+    
+    res.json({
+      success: true,
+      data: analysisResult,
+      metadata: {
+        fileName: req.file.originalname,
+        fileSize: req.file.size,
+        processingTimestamp: new Date().toISOString()
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ AI analysis error:', error);
+    
+    res.status(500).json({
+      success: false,
+      error: error.message || 'An error occurred during document analysis'
     });
   }
 });
@@ -2901,6 +3371,20 @@ app.post('/api/invitations/accept', async (req, res) => {
       });
     });
 
+    // Create notification for the inviter
+    db.get(
+      'SELECT inviterId FROM invitations WHERE token = ?',
+      [token],
+      (err, invitation) => {
+        if (!err && invitation) {
+          createNotification(
+            invitation.inviterId, 
+            `${result.user.name} has accepted your team invitation and joined as ${result.user.role}`
+          );
+        }
+      }
+    );
+
     res.json({
       success: true,
       message: 'Account created successfully and invitation accepted',
@@ -2914,6 +3398,96 @@ app.post('/api/invitations/accept', async (req, res) => {
       error: error.message || 'Failed to accept invitation'
     });
   }
+});
+
+// Notifications API Endpoints
+
+// Get all notifications for the authenticated user
+app.get('/api/notifications', requireAuth, (req, res) => {
+  const userId = req.session.userId;
+  
+  db.all(
+    'SELECT * FROM notifications WHERE recipientUserId = ? ORDER BY createdAt DESC LIMIT 50',
+    [userId],
+    (err, notifications) => {
+      if (err) {
+        console.error('Error fetching notifications:', err);
+        return res.status(500).json({ success: false, error: 'Failed to fetch notifications' });
+      }
+      
+      res.json({ success: true, data: notifications });
+    }
+  );
+});
+
+// Mark notification as read
+app.patch('/api/notifications/:id/read', requireAuth, (req, res) => {
+  const notificationId = req.params.id;
+  const userId = req.session.userId;
+  
+  db.run(
+    'UPDATE notifications SET isRead = 1 WHERE id = ? AND recipientUserId = ?',
+    [notificationId, userId],
+    function(err) {
+      if (err) {
+        console.error('Error marking notification as read:', err);
+        return res.status(500).json({ success: false, error: 'Failed to mark notification as read' });
+      }
+      
+      if (this.changes === 0) {
+        return res.status(404).json({ success: false, error: 'Notification not found' });
+      }
+      
+      res.json({ success: true, message: 'Notification marked as read' });
+    }
+  );
+});
+
+// Mark all notifications as read for the user
+app.patch('/api/notifications/read-all', requireAuth, (req, res) => {
+  const userId = req.session.userId;
+  
+  db.run(
+    'UPDATE notifications SET isRead = 1 WHERE recipientUserId = ? AND isRead = 0',
+    [userId],
+    function(err) {
+      if (err) {
+        console.error('Error marking all notifications as read:', err);
+        return res.status(500).json({ success: false, error: 'Failed to mark notifications as read' });
+      }
+      
+      res.json({ success: true, message: `${this.changes} notifications marked as read` });
+    }
+  );
+});
+
+// Get unread notification count
+app.get('/api/notifications/unread-count', requireAuth, (req, res) => {
+  const userId = req.session.userId;
+  
+  db.get(
+    'SELECT COUNT(*) as count FROM notifications WHERE recipientUserId = ? AND isRead = 0',
+    [userId],
+    (err, result) => {
+      if (err) {
+        console.error('Error getting unread count:', err);
+        return res.status(500).json({ success: false, error: 'Failed to get unread count' });
+      }
+      
+      res.json({ success: true, count: result.count });
+    }
+  );
+});
+
+// Test endpoint to create sample notifications (for testing purposes)
+app.post('/api/notifications/test', requireAuth, (req, res) => {
+  const userId = req.session.userId;
+  const { message } = req.body;
+  
+  const testMessage = message || `Test notification created at ${new Date().toLocaleString()}`;
+  createNotification(userId, testMessage);
+  
+  res.json({ success: true, message: 'Test notification created' });
 });
 
 // Endpoint to add/find user (legacy endpoint, keeping for compatibility)
@@ -2960,4 +3534,4 @@ process.on('SIGTERM', () => {
   });
 });
 
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+server.listen(PORT, () => console.log(`Server running on port ${PORT} with WebSocket support`));

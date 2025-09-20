@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import Sidebar from './Sidebar';
+import NotificationBell from './NotificationBell';
+import { useNotifications } from '../contexts/NotificationContext';
 import Dashboard from './Dashboard';
 import ProjectsPage from './ProjectsPage';
 import QuotesPage from './QuotesPage';
@@ -19,6 +21,7 @@ interface DashboardLayoutProps {
 
 const DashboardLayout = ({ companyName, updateCompanyName, currentUser, onLogout }: DashboardLayoutProps) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const { state, markAsRead, markAllAsRead } = useNotifications();
 
   const toggleSidebar = () => {
     setIsSidebarOpen((prev) => !prev);
@@ -33,7 +36,7 @@ const DashboardLayout = ({ companyName, updateCompanyName, currentUser, onLogout
         onLogout={onLogout} 
       />
 
-      <main className="flex-1 p-8 overflow-y-auto">
+      <main className="flex-1 p-8 overflow-y-auto relative">
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/projects" element={<ProjectsPage currentUser={currentUser} />} />
@@ -44,6 +47,16 @@ const DashboardLayout = ({ companyName, updateCompanyName, currentUser, onLogout
           <Route path="/vendors" element={<VendorsDataPage />} />
           <Route path="/settings" element={<SettingsPage companyName={companyName} updateCompanyName={updateCompanyName} currentUser={currentUser} />} />
         </Routes>
+
+        {/* Notification Bell - Fixed Position */}
+        <div className="fixed top-4 right-4 z-50">
+          <NotificationBell 
+            notifications={state.notifications}
+            unreadCount={state.unreadCount}
+            onMarkAsRead={markAsRead}
+            onMarkAllAsRead={markAllAsRead}
+          />
+        </div>
       </main>
     </div>
   );

@@ -28,6 +28,10 @@ interface QuoteContextType {
     quoteTotal?: number;
     budget?: number;
   }) => Promise<Quote>;
+  addLineItem: (quoteId: number, lineItemData: {
+    description: string;
+    estimatedCost: number;
+  }) => Promise<any>;
   updateQuote: (quoteId: number, updatedData: Partial<{
     quoteName: string;
     status: string;
@@ -236,6 +240,41 @@ export const QuoteProvider: React.FC<QuoteProviderProps> = ({ children }) => {
     }
   }, []);
 
+  const addLineItem = useCallback(async (quoteId: number, lineItemData: {
+    description: string;
+    estimatedCost: number;
+  }) => {
+    setError(null);
+
+    try {
+      const response = await fetch(`http://localhost:4000/api/quotes/${quoteId}/line-items`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify(lineItemData),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (data.success && data.lineItem) {
+        return data.lineItem;
+      } else {
+        throw new Error(data.error || 'Failed to create line item');
+      }
+    } catch (err) {
+      console.error('Error adding line item:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
+      setError(errorMessage);
+      throw new Error(errorMessage);
+    }
+  }, []);
+
   const refreshQuotes = useCallback(async () => {
     await fetchQuotes();
   }, [fetchQuotes]);
@@ -250,6 +289,7 @@ export const QuoteProvider: React.FC<QuoteProviderProps> = ({ children }) => {
     loading,
     error,
     addQuote,
+    addLineItem,
     updateQuote,
     deleteQuote,
     refreshQuotes,

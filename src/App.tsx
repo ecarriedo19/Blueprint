@@ -4,6 +4,7 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import { ProjectProvider } from './contexts/ProjectState';
 import { QuoteProvider } from './contexts/QuoteContext';
 import { AppProvider, useApp } from './contexts/AppContext';
+import { NotificationProvider } from './contexts/NotificationContext';
 import { checkRedirectResult } from './utils/googleAuth';
 import Toast from './components/Toast';
 import ConfirmationModal from './components/ConfirmationModal';
@@ -198,12 +199,14 @@ function AppContent() {
         {/* Main application routes */}
         <Route path="/*" element={
           isLoggedIn ? (
-            <DashboardLayout 
-              companyName={companyName} 
-              updateCompanyName={updateCompanyName}
-              currentUser={currentUser}
-              onLogout={handleLogout}
-            />
+            <NotificationProvider userId={currentUser?.id || null}>
+              <DashboardLayout 
+                companyName={companyName} 
+                updateCompanyName={updateCompanyName}
+                currentUser={currentUser}
+                onLogout={handleLogout}
+              />
+            </NotificationProvider>
           ) : (
             <>
               <Navigation onAuthClick={handleAuthClick} />

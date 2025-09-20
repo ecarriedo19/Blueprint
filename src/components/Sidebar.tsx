@@ -14,7 +14,7 @@ const SidebarContext = React.createContext({ isSidebarOpen: true });
 const Sidebar: React.FC<SidebarProps> = ({ isSidebarOpen, toggleSidebar, currentUser, onLogout }) => {
   return (
     <aside className={`h-screen transition-all duration-300 ease-in-out ${isSidebarOpen ? 'w-64' : 'w-20'}`}>
-      <nav className="h-full flex flex-col bg-white/5 dark:bg-white/5 border-r border-gray-200/50 dark:border-white/10 backdrop-blur-xl shadow-2xl">
+      <nav className="h-full flex flex-col bg-white/5 dark:bg-white/5 border-r border-gray-200/50 dark:border-white/10 backdrop-blur-xl shadow-2xl overflow-visible">
         <div className="p-4 pb-2 flex justify-between items-center">
           <img src="/logo-new.png" className={`overflow-hidden transition-all ${isSidebarOpen ? 'w-32' : 'w-0'}`} alt="Blueprint Logo" />
           <button 
