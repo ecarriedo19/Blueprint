@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useCallback } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 export interface Project {
   id: number;
@@ -11,12 +12,9 @@ export interface Project {
 }
 
 interface ProjectContextType {
-  projects: Project[];
-  loading: boolean;
-  error: string | null;
   addProject: (projectData: string | { name: string; description?: string; status?: string; priority?: string }, budget?: number, description?: string) => Promise<Project>;
   updateProject: (projectId: number, updates: Partial<Project>) => Promise<void>;
-  refreshProjects: () => Promise<void>;
+  deleteProject: (projectId: number) => Promise<void>;
 }
 
 interface ProjectProviderProps {
@@ -34,42 +32,87 @@ export const useProjects = () => {
 };
 
 export const ProjectProvider: React.FC<ProjectProviderProps> = ({ children }) => {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
-  const fetchProjects = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const response = await fetch('http://localhost:4000/api/projects', {
-        credentials: 'include'
+  const addProjectMutation = useMutation({
+    mutationFn: async (projectPayload: any) => {
+      const response = await fetch('/api/projects', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify(projectPayload)
       });
 
       if (!response.ok) {
-        if (response.status === 401) {
-          setProjects([]);
-          return;
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          const errorText = await response.text();
+          errorData = { error: errorText || 'HTTP ' + response.status };
         }
-        throw new Error('HTTP error! status: ' + response.status);
+        
+        throw new Error(errorData.error || 'Failed to create project: ' + response.status);
       }
 
       const data = await response.json();
-      if (data.success) {
-        setProjects(data.projects || []);
-      } else {
-        throw new Error(data.error || 'Failed to fetch projects');
+      return data.project;
+    },
+    onSuccess: () => {
+      // Invalidate and refetch projects
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+    },
+  });
+
+  const updateProjectMutation = useMutation({
+    mutationFn: async ({ projectId, updates }: { projectId: number; updates: Partial<Project> }) => {
+      const response = await fetch('/api/projects/' + projectId, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify(updates)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to update project: ' + response.status);
       }
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch projects';
-      console.error('Error fetching projects:', errorMessage);
-      setError(errorMessage);
-      setProjects([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+
+      const data = await response.json();
+      return data.project;
+    },
+    onSuccess: (updatedProject) => {
+      // Invalidate projects list and update individual project cache
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      queryClient.invalidateQueries({ queryKey: ['project', updatedProject.id] });
+      console.log('Updated project: ' + updatedProject.name);
+    },
+  });
+
+  const deleteProjectMutation = useMutation({
+    mutationFn: async (projectId: number) => {
+      const response = await fetch('/api/projects/' + projectId, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to delete project: ' + response.status);
+      }
+
+      return response.json();
+    },
+    onSuccess: (_, projectId) => {
+      // Remove from cache and invalidate projects list
+      queryClient.removeQueries({ queryKey: ['project', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+    },
+  });
 
   const addProject = useCallback(async (
     projectData: string | { name: string; description?: string; status?: string; priority?: string }, 
@@ -98,90 +141,23 @@ export const ProjectProvider: React.FC<ProjectProviderProps> = ({ children }) =>
       throw new Error('Project name is required');
     }
 
-    try {
-      const response = await fetch('http://localhost:4000/api/projects', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        credentials: 'include',
-        body: JSON.stringify(projectPayload)
-      });
-
-      if (!response.ok) {
-        let errorData;
-        try {
-          errorData = await response.json();
-        } catch (parseError) {
-          const errorText = await response.text();
-          errorData = { error: errorText || 'HTTP ' + response.status };
-        }
-        
-        throw new Error(errorData.error || 'Failed to create project: ' + response.status);
-      }
-
-      const data = await response.json();
-      const newProject = data.project;
-      
-      setProjects(prev => [newProject, ...prev]);
-      
-      console.log('Created project: ' + projectPayload.name);
-      return newProject;
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to create project';
-      console.error('Error creating project:', errorMessage);
-      setError(errorMessage);
-      throw err;
-    }
-  }, []);
+    const newProject = await addProjectMutation.mutateAsync(projectPayload);
+    console.log('Created project: ' + projectPayload.name);
+    return newProject;
+  }, [addProjectMutation]);
 
   const updateProject = useCallback(async (projectId: number, updates: Partial<Project>): Promise<void> => {
-    try {
-      const response = await fetch('http://localhost:4000/api/projects/' + projectId, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        credentials: 'include',
-        body: JSON.stringify(updates)
-      });
+    await updateProjectMutation.mutateAsync({ projectId, updates });
+  }, [updateProjectMutation]);
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to update project: ' + response.status);
-      }
-
-      const data = await response.json();
-      const updatedProject = data.project;
-      
-      setProjects(prev => prev.map(project => 
-        project.id === projectId ? updatedProject : project
-      ));
-      
-      console.log('Updated project: ' + updatedProject.name);
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to update project';
-      console.error('Error updating project:', errorMessage);
-      setError(errorMessage);
-      throw err;
-    }
-  }, []);
-
-  const refreshProjects = useCallback(async () => {
-    await fetchProjects();
-  }, [fetchProjects]);
-
-  useEffect(() => {
-    fetchProjects();
-  }, [fetchProjects]);
+  const deleteProject = useCallback(async (projectId: number): Promise<void> => {
+    await deleteProjectMutation.mutateAsync(projectId);
+  }, [deleteProjectMutation]);
 
   const value: ProjectContextType = {
-    projects,
-    loading,
-    error,
     addProject,
     updateProject,
-    refreshProjects
+    deleteProject,
   };
 
   return (

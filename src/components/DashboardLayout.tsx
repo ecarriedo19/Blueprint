@@ -11,6 +11,7 @@ import AiCopilotPage from './AiCopilotPage';
 import IntegrationsPage from './IntegrationsPage';
 import SettingsPage from './SettingsPage';
 import VendorsDataPage from './VendorsDataPage';
+import { TeamMutationsProvider } from '../contexts/TeamMutations';
 
 interface DashboardLayoutProps {
   companyName: string;
@@ -45,7 +46,11 @@ const DashboardLayout = ({ companyName, updateCompanyName, currentUser, onLogout
           <Route path="/ai-copilot" element={<AiCopilotPage />} />
           <Route path="/integrations" element={<IntegrationsPage />} />
           <Route path="/vendors" element={<VendorsDataPage />} />
-          <Route path="/settings" element={<SettingsPage companyName={companyName} updateCompanyName={updateCompanyName} currentUser={currentUser} />} />
+          <Route path="/settings" element={
+            <TeamMutationsProvider>
+              <SettingsPage companyName={companyName} updateCompanyName={updateCompanyName} currentUser={currentUser} />
+            </TeamMutationsProvider>
+          } />
         </Routes>
 
         {/* Notification Bell - Fixed Position */}

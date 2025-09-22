@@ -15,6 +15,7 @@ const multer = require('multer');
 const pdfParse = require('pdf-parse');
 const WebSocket = require('ws');
 const http = require('http');
+const Stripe = require('stripe');
 require('dotenv').config();
 
 const app = express();
@@ -70,6 +71,15 @@ if (GEMINI_API_KEY) {
   console.warn('⚠️  VITE_GEMINI_API_KEY not configured - AI quote analysis will be disabled');
 }
 
+// Initialize Stripe
+let stripe = null;
+if (process.env.STRIPE_SECRET_KEY) {
+  stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+  console.log('✅ Stripe configured for payment processing');
+} else {
+  console.warn('⚠️  STRIPE_SECRET_KEY not configured - subscription features will be disabled');
+}
+
 // Initialize Supabase client
 let supabase = null;
 let embedder = null;
@@ -97,7 +107,7 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// Add security headers to help with OAuth
+// Add security headers that work with Firebase auth and Stripe
 app.use((req, res, next) => {
   res.header('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
   res.header('Cross-Origin-Embedder-Policy', 'unsafe-none');
@@ -229,6 +239,49 @@ db.serialize(() => {
       });
     } else {
       console.log('✅ role column already exists in users table');
+    }
+  });
+
+  // Migration: Add Stripe subscription columns to existing users table if they don't exist
+  db.all("PRAGMA table_info(users)", (err, columns) => {
+    if (err) {
+      console.error('Error checking users table schema:', err);
+      return;
+    }
+
+    const hasStripeCustomerId = columns.some(col => col.name === 'stripeCustomerId');
+    const hasSubscriptionStatus = columns.some(col => col.name === 'subscriptionStatus');
+
+    if (!hasStripeCustomerId) {
+      db.run('ALTER TABLE users ADD COLUMN stripeCustomerId TEXT', (err) => {
+        if (err) {
+          console.error('Error adding stripeCustomerId column:', err);
+        } else {
+          console.log('✅ Added stripeCustomerId column to users table');
+        }
+      });
+    } else {
+      console.log('✅ stripeCustomerId column already exists in users table');
+    }
+
+    if (!hasSubscriptionStatus) {
+      db.run('ALTER TABLE users ADD COLUMN subscriptionStatus TEXT DEFAULT "free"', (err) => {
+        if (err) {
+          console.error('Error adding subscriptionStatus column:', err);
+        } else {
+          console.log('✅ Added subscriptionStatus column to users table');
+          // Update existing users with default subscription status
+          db.run('UPDATE users SET subscriptionStatus = "free" WHERE subscriptionStatus IS NULL', (err) => {
+            if (err) {
+              console.error('Error updating existing users with default subscription status:', err);
+            } else {
+              console.log('✅ Updated existing users with free subscription status');
+            }
+          });
+        }
+      });
+    } else {
+      console.log('✅ subscriptionStatus column already exists in users table');
     }
   });
 
@@ -3477,6 +3530,231 @@ app.get('/api/notifications/unread-count', requireAuth, (req, res) => {
       res.json({ success: true, count: result.count });
     }
   );
+});
+
+// Stripe Checkout API Endpoints
+
+// Create Stripe Checkout Session (accessible to all users)
+app.post('/api/create-checkout-session', async (req, res) => {
+  if (!stripe) {
+    return res.status(500).json({
+      success: false,
+      error: 'Stripe not configured. Please contact support.'
+    });
+  }
+
+  try {
+    const { priceId, email, name } = req.body;
+    const userId = req.session.userId; // May be undefined for non-authenticated users
+
+    if (!priceId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Price ID is required'
+      });
+    }
+
+    let customerId = null;
+    let sessionMetadata = { priceId };
+
+    // If user is authenticated, try to get their existing Stripe customer
+    if (userId) {
+      const user = await new Promise((resolve, reject) => {
+        db.get('SELECT * FROM users WHERE id = ?', [userId], (err, user) => {
+          if (err) reject(err);
+          else resolve(user);
+        });
+      });
+
+      if (user) {
+        customerId = user.stripeCustomerId;
+        sessionMetadata.userId = userId.toString();
+        sessionMetadata.userEmail = user.email;
+
+        // Create Stripe customer if doesn't exist
+        if (!customerId) {
+          const customer = await stripe.customers.create({
+            email: user.email,
+            name: user.name,
+            metadata: {
+              userId: userId.toString()
+            }
+          });
+
+          customerId = customer.id;
+
+          // Save customer ID to database
+          await new Promise((resolve, reject) => {
+            db.run(
+              'UPDATE users SET stripeCustomerId = ? WHERE id = ?',
+              [customerId, userId],
+              function(err) {
+                if (err) reject(err);
+                else resolve(this);
+              }
+            );
+          });
+
+          console.log(`✅ Created Stripe customer ${customerId} for user ${userId}`);
+        }
+      }
+    }
+
+    // For non-authenticated users, we'll let Stripe handle customer creation during checkout
+    // The customer will be created when they complete payment
+
+    // Create checkout session
+    const sessionConfig = {
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          price: priceId,
+          quantity: 1,
+        },
+      ],
+      mode: 'subscription',
+      success_url: `${process.env.FRONTEND_URL}/subscribe-success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${process.env.FRONTEND_URL}/subscribe-cancel`,
+      metadata: sessionMetadata,
+      allow_promotion_codes: true,
+      billing_address_collection: 'required'
+    };
+
+    // If we have an existing customer, use it
+    if (customerId) {
+      sessionConfig.customer = customerId;
+    } else {
+      // For new customers, collect email during checkout
+      sessionConfig.customer_email = email || undefined;
+    }
+
+    const session = await stripe.checkout.sessions.create(sessionConfig);
+
+    console.log(`✅ Created Stripe checkout session ${session.id}${userId ? ` for user ${userId}` : ' for anonymous user'}`);
+
+    res.json({
+      success: true,
+      sessionId: session.id,
+      url: session.url
+    });
+
+  } catch (error) {
+    console.error('Error creating checkout session:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to create checkout session',
+      details: error.message
+    });
+  }
+});
+
+// Stripe Webhook for handling successful payments
+app.post('/api/stripe-webhook', express.raw({type: 'application/json'}), async (req, res) => {
+  const sig = req.headers['stripe-signature'];
+  const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+  let event;
+
+  try {
+    if (endpointSecret && sig) {
+      // Verify webhook signature in production
+      event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
+    } else {
+      // For development without webhook setup, parse directly
+      console.log('⚠️  Running in development mode without webhook verification');
+      event = JSON.parse(req.body.toString());
+    }
+  } catch (err) {
+    console.log(`⚠️  Webhook signature verification failed.`, err.message);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  // Handle the event
+  switch (event.type) {
+    case 'checkout.session.completed':
+      const session = event.data.object;
+      console.log('✅ Checkout session completed:', session.id);
+
+      try {
+        // Get customer details from Stripe
+        const customer = await stripe.customers.retrieve(session.customer);
+        const subscription = await stripe.subscriptions.retrieve(session.subscription);
+
+        // Check if user already exists (for authenticated checkouts)
+        if (session.metadata.userId) {
+          // Update existing user's subscription status
+          db.run(
+            'UPDATE users SET subscriptionStatus = ?, stripeCustomerId = ? WHERE id = ?',
+            ['active', customer.id, session.metadata.userId],
+            function(err) {
+              if (err) {
+                console.error('Error updating user subscription:', err);
+              } else {
+                console.log(`✅ Updated subscription for user ${session.metadata.userId}`);
+              }
+            }
+          );
+        } else {
+          // Create new user account for anonymous checkout
+          const userData = {
+            email: customer.email,
+            name: customer.name || customer.email.split('@')[0],
+            stripeCustomerId: customer.id,
+            subscriptionStatus: 'active'
+          };
+
+          db.run(
+            'INSERT INTO users (email, name, stripeCustomerId, subscriptionStatus) VALUES (?, ?, ?, ?)',
+            [userData.email, userData.name, userData.stripeCustomerId, userData.subscriptionStatus],
+            function(err) {
+              if (err) {
+                console.error('Error creating user from webhook:', err);
+              } else {
+                console.log(`✅ Created new user account for ${userData.email} via Stripe checkout`);
+                
+                // Create welcome notification
+                createNotification(this.lastID, `Welcome to Blueprint! Your ${subscription.items.data[0].price.nickname || 'subscription'} is now active.`);
+              }
+            }
+          );
+        }
+      } catch (error) {
+        console.error('Error processing checkout completion:', error);
+      }
+      break;
+
+    case 'customer.subscription.updated':
+    case 'customer.subscription.deleted':
+      const subscriptionUpdate = event.data.object;
+      console.log(`✅ Subscription ${event.type}:`, subscriptionUpdate.id);
+
+      try {
+        // Update user subscription status
+        const status = subscriptionUpdate.status === 'active' ? 'active' : 
+                      subscriptionUpdate.status === 'canceled' ? 'canceled' : 
+                      'inactive';
+
+        db.run(
+          'UPDATE users SET subscriptionStatus = ? WHERE stripeCustomerId = ?',
+          [status, subscriptionUpdate.customer],
+          function(err) {
+            if (err) {
+              console.error('Error updating subscription status:', err);
+            } else {
+              console.log(`✅ Updated subscription status to ${status} for customer ${subscriptionUpdate.customer}`);
+            }
+          }
+        );
+      } catch (error) {
+        console.error('Error processing subscription update:', error);
+      }
+      break;
+
+    default:
+      console.log(`Unhandled event type ${event.type}`);
+  }
+
+  res.json({received: true});
 });
 
 // Test endpoint to create sample notifications (for testing purposes)

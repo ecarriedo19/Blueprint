@@ -1,11 +1,12 @@
-import React from 'react';
 import { ArrowRight } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
-interface FinalCTAProps {
-  onAuthClick: () => void;
-}
+export default function FinalCTA() {
+  const navigate = useNavigate();
 
-export default function FinalCTA({ onAuthClick }: FinalCTAProps) {
+  const handleStartTrial = () => {
+    navigate('/pricing');
+  };
   return (
     <section className="py-20 bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-900 text-white relative overflow-hidden">
       <div className="absolute inset-0 bg-gradient-to-br from-purple-900/20 via-transparent to-blue-900/20"></div>
@@ -26,7 +27,7 @@ export default function FinalCTA({ onAuthClick }: FinalCTAProps) {
           
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <button 
-              onClick={onAuthClick}
+              onClick={handleStartTrial}
               className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-8 py-4 rounded-lg font-semibold flex items-center gap-2 transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl"
             >
               Start Free Trial

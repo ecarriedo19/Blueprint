@@ -144,7 +144,7 @@ const UploadQuoteModal: React.FC<UploadQuoteModalProps> = ({ isOpen, onClose, on
       formData.append('file', file);
 
       // Step 2: Make API call to backend for AI analysis
-      const response = await fetch('http://localhost:4000/api/quotes/upload-and-analyze', {
+      const response = await fetch('/api/quotes/upload-and-analyze', {
         method: 'POST',
         credentials: 'include', // Include session cookies
         body: formData

@@ -1,11 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { useCurrentUser } from './utils/queries';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { ProjectProvider } from './contexts/ProjectState';
 import { QuoteProvider } from './contexts/QuoteContext';
 import { AppProvider, useApp } from './contexts/AppContext';
 import { NotificationProvider } from './contexts/NotificationContext';
-import { checkRedirectResult } from './utils/googleAuth';
+import { NotificationMutationsProvider } from './contexts/NotificationMutations';
+
 import Toast from './components/Toast';
 import ConfirmationModal from './components/ConfirmationModal';
 import Navigation from './components/Navigation';
@@ -20,19 +23,44 @@ import FinalCTA from './components/FinalCTA';
 import Footer from './components/Footer';
 import DashboardLayout from './components/DashboardLayout';
 import AcceptInvitePage from './components/AcceptInvitePage';
+import PricingPage from './components/PricingPage';
+import SubscribeSuccessPage from './components/SubscribeSuccessPage';
+import SubscribeCancelPage from './components/SubscribeCancelPage';
+
+// Create a client for TanStack Query
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 1000 * 60 * 5, // 5 minutes
+      refetchOnWindowFocus: false,
+      retry: (failureCount, error: any) => {
+        // Don't retry on auth errors
+        if (error?.status === 401 || error?.status === 403) {
+          return false;
+        }
+        return failureCount < 3;
+      },
+    },
+    mutations: {
+      retry: 1,
+    },
+  },
+});
 
 // Separate component to access AppContext
 function AppContent() {
   const { confirmationModal, hideConfirmationModal } = useApp();
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [currentUser, setCurrentUser] = useState<any>(null);
   const [companyName, setCompanyName] = useState('Company Co');
   const [toast, setToast] = useState<{ message: string; isVisible: boolean; type: 'success' | 'error' }>({ 
     message: '', 
     isVisible: false, 
     type: 'success' 
   });
+
+  // Use TanStack Query for user authentication state
+  const { data: currentUser } = useCurrentUser();
+  const isLoggedIn = !!currentUser;
 
   const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, isVisible: true, type });
@@ -42,54 +70,14 @@ function AppContent() {
     setToast(prev => ({ ...prev, isVisible: false }));
   }, []);
 
-  // Check for existing session on app load
-  useEffect(() => {
-    const checkSession = async () => {
-      try {
-        // First check for redirect result from Google OAuth
-        const redirectUser = await checkRedirectResult();
-        if (redirectUser) {
-          console.log('Processing redirect result:', redirectUser);
-          // Handle the redirect result by calling our backend
-          const response = await fetch('http://localhost:4000/api/users', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(redirectUser),
-            credentials: 'include'
-          });
-
-          if (response.ok) {
-            const responseData = await response.json();
-            setCurrentUser(responseData.user);
-            setIsLoggedIn(true);
-            return;
-          }
-        }
-
-        // If no redirect result, check for existing session
-        const response = await fetch('http://localhost:4000/api/me', {
-          credentials: 'include'
-        });
-        
-        if (response.ok) {
-          const userData = await response.json();
-          setCurrentUser(userData);
-          setIsLoggedIn(true);
-        }
-      } catch (error) {
-        console.log('No existing session found:', error);
-      }
-    };
-
-    checkSession();
-  }, []);
+  // Auth is now handled by the useCurrentUser hook
 
   useEffect(() => {
     // Fetch company name when user is logged in
     if (isLoggedIn) {
       const fetchCompanyProfile = async () => {
         try {
-          const res = await fetch('http://localhost:4000/api/company-profile', {
+          const res = await fetch('/api/company-profile', {
             credentials: 'include'
           });
           if (!res.ok) {
@@ -118,7 +106,7 @@ function AppContent() {
     }
     
     try {
-      const response = await fetch('http://localhost:4000/api/company-profile', {
+      const response = await fetch('/api/company-profile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ company_name: newName.trim() }),
@@ -150,25 +138,23 @@ function AppContent() {
     setIsAuthModalOpen(false);
   };
 
-  const handleLoginSuccess = (userData?: any) => {
-    setIsLoggedIn(true);
+  const handleLoginSuccess = () => {
     setIsAuthModalOpen(false);
-    if (userData) {
-      setCurrentUser(userData);
-    }
+    // Invalidate the current user query to refetch user data
+    queryClient.invalidateQueries({ queryKey: ['currentUser'] });
   };
 
   const handleLogout = async () => {
     try {
-      await fetch('http://localhost:4000/api/logout', {
+      await fetch('/api/logout', {
         method: 'POST',
         credentials: 'include'
       });
     } catch (error) {
       console.error('Logout error:', error);
     } finally {
-      setIsLoggedIn(false);
-      setCurrentUser(null);
+      // Clear all cached data and refetch user (which will return null)
+      queryClient.clear();
       setCompanyName('Company Co');
     }
   };
@@ -196,28 +182,35 @@ function AppContent() {
         {/* Public route for accepting invitations */}
         <Route path="/accept-invite/:token" element={<AcceptInvitePage />} />
         
+        {/* Subscription routes - accessible to both logged in and logged out users */}
+        <Route path="/pricing" element={<PricingPage />} />
+        <Route path="/subscribe-success" element={<SubscribeSuccessPage />} />
+        <Route path="/subscribe-cancel" element={<SubscribeCancelPage />} />
+        
         {/* Main application routes */}
         <Route path="/*" element={
           isLoggedIn ? (
-            <NotificationProvider userId={currentUser?.id || null}>
-              <DashboardLayout 
-                companyName={companyName} 
-                updateCompanyName={updateCompanyName}
-                currentUser={currentUser}
-                onLogout={handleLogout}
-              />
-            </NotificationProvider>
+            <NotificationMutationsProvider>
+              <NotificationProvider userId={currentUser?.id || null}>
+                <DashboardLayout 
+                  companyName={companyName} 
+                  updateCompanyName={updateCompanyName}
+                  currentUser={currentUser}
+                  onLogout={handleLogout}
+                />
+              </NotificationProvider>
+            </NotificationMutationsProvider>
           ) : (
             <>
               <Navigation onAuthClick={handleAuthClick} />
               <AuthModal isOpen={isAuthModalOpen} onClose={handleAuthClose} onLoginSuccess={handleLoginSuccess} />
-              <Hero onAuthClick={handleAuthClick} />
+              <Hero />
               <TrustedBy />
               <Features />
               <AIWizard />
               <Integrations />
               <Pricing />
-              <FinalCTA onAuthClick={handleAuthClick} />
+              <FinalCTA />
               <Footer />
             </>
           )
@@ -230,17 +223,19 @@ function AppContent() {
 // Main App component with providers
 function App() {
   return (
-    <AppProvider>
-      <ThemeProvider>
-        <ProjectProvider>
-          <QuoteProvider>
-            <Router>
-              <AppContent />
-            </Router>
-          </QuoteProvider>
-        </ProjectProvider>
-      </ThemeProvider>
-    </AppProvider>
+    <QueryClientProvider client={queryClient}>
+      <AppProvider>
+        <ThemeProvider>
+          <ProjectProvider>
+            <QuoteProvider>
+              <Router>
+                <AppContent />
+              </Router>
+            </QuoteProvider>
+          </ProjectProvider>
+        </ThemeProvider>
+      </AppProvider>
+    </QueryClientProvider>
   );
 }
 

@@ -2,8 +2,9 @@ import { useState, useEffect, useRef } from 'react';
 import { Send, Sparkles, Bot, X, ExternalLink } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import WorkspaceLayout from './WorkspaceLayout';
-import { useProjects } from '../contexts/ProjectState';
-import { useQuotes } from '../contexts/QuoteContext';
+import { useProjects, useQuotes } from '../utils/queries';
+import { useProjects as useProjectMutations } from '../contexts/ProjectState';
+import { useQuotes as useQuoteMutations } from '../contexts/QuoteContext';
 import Button from './Button';
 import Card from './Card';
 
@@ -24,8 +25,10 @@ interface PreviewContent {
 
 const AiCopilotPage = () => {
   const navigate = useNavigate();
-  const { projects, addProject, updateProject, refreshProjects } = useProjects();
-  const { quotes, addQuote, updateQuote, refreshQuotes } = useQuotes();
+  const { data: projects = [] } = useProjects();
+  const { data: quotes = [] } = useQuotes();
+  const { addProject, updateProject } = useProjectMutations();
+  const { addQuote, updateQuote } = useQuoteMutations();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
   // Chat states
@@ -52,11 +55,7 @@ const AiCopilotPage = () => {
     scrollToBottom();
   }, [messages]);
 
-  // Refresh data on component mount to ensure AI has latest information
-  useEffect(() => {
-    refreshProjects();
-    refreshQuotes();
-  }, [refreshProjects, refreshQuotes]);
+  // React Query automatically keeps data fresh, no manual refresh needed
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -586,7 +585,7 @@ Please try again or create the quote manually from the Quotes page.`;
     } else if (functionName === 'getProjects') {
       try {
         // Refresh to get latest data
-        await refreshProjects();
+        // React Query will automatically refresh the data
         const currentProjects = projects || [];
         
         if (currentProjects.length === 0) {
@@ -626,7 +625,7 @@ Please try refreshing the page or check the Projects page directly.`;
     } else if (functionName === 'getQuotes') {
       try {
         // Refresh to get latest data
-        await refreshQuotes();
+        // React Query will automatically refresh the data
         const currentQuotes = quotes || [];
         
         if (currentQuotes.length === 0) {
@@ -667,21 +666,8 @@ Please try refreshing the page or check the Quotes page directly.`;
       try {
         const projectIdentifier = args.projectIdentifier;
         
-        // Fetch fresh projects data directly from the API
+        // Use current projects data from React Query
         let currentProjects = projects || [];
-        try {
-          const response = await fetch('http://localhost:4000/api/projects', {
-            credentials: 'include'
-          });
-          if (response.ok) {
-            const data = await response.json();
-            if (data.success) {
-              currentProjects = data.projects || [];
-            }
-          }
-        } catch (fetchError) {
-          console.warn('Failed to fetch fresh projects, using cached data:', fetchError);
-        }
         
         // Find the project to update by name (case-insensitive partial match)
         const projectToUpdate = currentProjects.find(p => 
@@ -736,21 +722,8 @@ Please try updating the project manually from the Projects page.`;
       try {
         const quoteIdentifier = args.quoteIdentifier;
         
-        // Fetch fresh quotes data directly from the API
+        // Use current quotes data from React Query
         let currentQuotes = quotes || [];
-        try {  
-          const response = await fetch('http://localhost:4000/api/quotes', {
-            credentials: 'include'
-          });
-          if (response.ok) {
-            const data = await response.json();
-            if (data.success) {
-              currentQuotes = data.quotes || [];
-            }
-          }
-        } catch (fetchError) {
-          console.warn('Failed to fetch fresh quotes, using cached data:', fetchError);
-        }
         
         // Enhanced fuzzy matching for quotes
         const findBestQuoteMatch = (identifier: string, quotes: any[]) => {

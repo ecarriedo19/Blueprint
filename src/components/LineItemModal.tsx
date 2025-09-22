@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import Button from './Button';
 import Card from './Card';
+import { useQuotes } from '../contexts/QuoteContext';
 
 interface LineItem {
   id?: number;
   description: string;
   estimatedCost: number;
-  actualCost: number;
+  actualCost?: number;
 }
 
 interface LineItemModalProps {
@@ -24,6 +25,7 @@ const LineItemModal: React.FC<LineItemModalProps> = ({
   itemToEdit, 
   quoteId 
 }) => {
+  const { addLineItem, updateLineItem } = useQuotes();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     description: '',
@@ -39,7 +41,7 @@ const LineItemModal: React.FC<LineItemModalProps> = ({
         setFormData({
           description: itemToEdit.description,
           estimatedCost: itemToEdit.estimatedCost,
-          actualCost: itemToEdit.actualCost
+          actualCost: itemToEdit.actualCost || 0
         });
       } else {
         // Create mode - reset to defaults
@@ -63,48 +65,21 @@ const LineItemModal: React.FC<LineItemModalProps> = ({
     setIsSubmitting(true);
 
     try {
-      let response;
-      
       if (itemToEdit) {
-        // Edit mode - update existing line item
-        response = await fetch(`http://localhost:4000/api/line-items/${itemToEdit.id}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          credentials: 'include',
-          body: JSON.stringify(formData),
-        });
+        // Edit mode - use mutation from context (this will trigger cache invalidation)
+        await updateLineItem(itemToEdit.id!, quoteId, formData);
       } else {
-        // Create mode - add new line item
-        response = await fetch(`http://localhost:4000/api/quotes/${quoteId}/line-items`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          credentials: 'include',
-          body: JSON.stringify(formData),
-        });
+        // Create mode - use mutation from context (this will trigger cache invalidation)
+        await addLineItem(quoteId, formData);
       }
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `Failed to ${itemToEdit ? 'update' : 'create'} line item`);
+      // Success feedback
+      if (onSuccess) {
+        onSuccess(`Line item ${itemToEdit ? 'updated' : 'created'} successfully!`);
       }
-
-      const data = await response.json();
       
-      if (data.success) {
-        // Success feedback
-        if (onSuccess) {
-          onSuccess(`Line item ${itemToEdit ? 'updated' : 'created'} successfully!`);
-        }
-        
-        // Close modal
-        onClose();
-      } else {
-        throw new Error(data.error || `Failed to ${itemToEdit ? 'update' : 'create'} line item`);
-      }
+      // Close modal
+      onClose();
     } catch (error) {
       console.error(`Failed to ${itemToEdit ? 'update' : 'create'} line item:`, error);
       

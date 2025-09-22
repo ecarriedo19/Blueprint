@@ -17,7 +17,7 @@ interface LineItem {
   id: number;
   description: string;
   estimatedCost: number;
-  actualCost: number;
+  actualCost?: number;
   created_at: string;
   updated_at: string;
 }

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useQuotes } from '../contexts/QuoteContext';
+import { useQuote, useLineItems, LineItem } from '../utils/queries';
+import { useQuotes as useQuoteMutations } from '../contexts/QuoteContext';
 import { useApp } from '../contexts/AppContext';
 import Card from './Card';
 import Button from './Button';
@@ -38,40 +39,16 @@ interface ViewQuotePageProps {
   currentUser: User;
 }
 
-interface Quote {
-  id: number;
-  quoteName: string;
-  status: string;
-  timeToDevelop?: string;
-  timeToDevelopValue?: number;
-  timeToDevelopUnit?: string;
-  variancePercentage: number;
-  quoteTotal: number;
-  budget: number;
-  created_at: string;
-  updated_at: string;
-}
-
-interface LineItem {
-  id: number;
-  description: string;  // Changed from 'item' to 'description'
-  estimatedCost: number;
-  actualCost: number;
-  created_at: string;
-  updated_at: string;
-}
-
 const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { updateQuote } = useQuotes();
+  const { updateQuote, deleteLineItem } = useQuoteMutations();
   const { showConfirmationModal } = useApp();
   
-  const [quote, setQuote] = useState<Quote | null>(null);
-  const [lineItems, setLineItems] = useState<LineItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [lineItemsLoading, setLineItemsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // Use React Query hooks for data fetching
+  const quoteId = id ? parseInt(id, 10) : 0;
+  const { data: quote, isLoading: loading, error } = useQuote(quoteId);
+  const { data: lineItems = [], isLoading: lineItemsLoading } = useLineItems(quoteId);
   const [isLineItemModalOpen, setIsLineItemModalOpen] = useState(false);
   const [lineItemToEdit, setLineItemToEdit] = useState<LineItem | null>(null);
   const [editingQuoteTotal, setEditingQuoteTotal] = useState(false);
@@ -101,76 +78,16 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
   }, []);
 
   // Fetch line items for the quote
-  const fetchLineItems = useCallback(async () => {
-    if (!id) return;
-    
-    setLineItemsLoading(true);
-    try {
-      const response = await fetch(`http://localhost:4000/api/quotes/${id}/line-items`, {
-        credentials: 'include'
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to load line items');
-      }
-
-      const data = await response.json();
-      if (data.success) {
-        setLineItems(data.lineItems || []);
-      } else {
-        throw new Error(data.error || 'Failed to load line items');
-      }
-    } catch (err) {
-      console.error('Error fetching line items:', err);
-      showToast('Failed to load line items', 'error');
-    } finally {
-      setLineItemsLoading(false);
-    }
-  }, [id, showToast]);
-
-  // Fetch quote data
+  // Initialize tempQuoteTotal when quote data is loaded
   useEffect(() => {
-    const fetchQuote = async () => {
-      if (!id) {
-        setError('Invalid quote ID');
-        setLoading(false);
-        return;
-      }
-
-      try {
-        const response = await fetch(`http://localhost:4000/api/quotes/${id}`, {
-          credentials: 'include'
-        });
-
-        if (!response.ok) {
-          if (response.status === 404) {
-            throw new Error('Quote not found');
-          }
-          throw new Error('Failed to load quote');
-        }
-
-        const data = await response.json();
-        if (data.success) {
-          setQuote(data.quote);
-          setTempQuoteTotal(data.quote.quoteTotal.toString());
-        } else {
-          throw new Error(data.error || 'Failed to load quote');
-        }
-      } catch (err) {
-        console.error('Error fetching quote:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load quote');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchQuote();
-    fetchLineItems();
-  }, [id, fetchLineItems]);
+    if (quote) {
+      setTempQuoteTotal(quote.quoteTotal.toString());
+    }
+  }, [quote]);
 
   // Dynamic calculations
   const calculateActualCost = useCallback(() => {
-    return lineItems.reduce((sum, item) => sum + item.actualCost, 0);
+    return lineItems.reduce((sum, item) => sum + (item.actualCost || 0), 0);
   }, [lineItems]);
 
   const calculateProfitMargin = useCallback(() => {
@@ -258,8 +175,7 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
     }
 
     try {
-      const updatedQuote = await updateQuote(quote.id, { quoteTotal: newTotal });
-      setQuote(updatedQuote);
+      await updateQuote(quote.id, { quoteTotal: newTotal });
       setEditingQuoteTotal(false);
       showToast('Quote total updated successfully!');
     } catch (error) {
@@ -287,8 +203,7 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
     if (!quote || quote.status.toLowerCase() === newStatus.toLowerCase()) return;
 
     try {
-      const updatedQuote = await updateQuote(quote.id, { status: newStatus });
-      setQuote(updatedQuote);
+      await updateQuote(quote.id, { status: newStatus });
       showToast(`Status updated to '${newStatus}'!`);
     } catch (error) {
       console.error('Failed to update status:', error);
@@ -316,22 +231,8 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
       type: 'danger',
       onConfirm: async () => {
         try {
-          const response = await fetch(`http://localhost:4000/api/line-items/${item.id}`, {
-            method: 'DELETE',
-            credentials: 'include'
-          });
-
-          if (!response.ok) {
-            throw new Error('Failed to delete line item');
-          }
-
-          const data = await response.json();
-          if (data.success) {
-            await fetchLineItems(); // Refresh the list
-            showToast('Line item deleted successfully!');
-          } else {
-            throw new Error(data.error || 'Failed to delete line item');
-          }
+          await deleteLineItem(item.id!, quoteId);
+          showToast('Line item deleted successfully!');
         } catch (error) {
           console.error('Failed to delete line item:', error);
           showToast('Failed to delete line item. Please try again.', 'error');
@@ -347,7 +248,7 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
 
   const handleLineItemSuccess = (message: string, type: 'success' | 'error' = 'success') => {
     showToast(message, type);
-    fetchLineItems(); // Refresh the list
+    // React Query will automatically refresh the data
   };
 
   const calculateVariance = (estimated: number, actual: number) => {
@@ -362,7 +263,7 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
     try {
       showToast('Generating PDF report...', 'success');
       
-      const response = await fetch(`http://localhost:4000/api/quotes/${quote.id}/pdf`, {
+      const response = await fetch(`/api/quotes/${quote.id}/pdf`, {
         method: 'GET',
         credentials: 'include'
       });
@@ -523,7 +424,7 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
-            <p className="text-red-300">{error || 'Quote not found'}</p>
+            <p className="text-red-300">{error?.message || 'Quote not found'}</p>
           </div>
         </Card>
       </div>
@@ -704,7 +605,7 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
                 </tr>
               ) : (
                 lineItems.map((item, index) => {
-                  const variance = calculateVariance(item.estimatedCost, item.actualCost);
+                  const variance = calculateVariance(item.estimatedCost, item.actualCost || 0);
                   return (
                     <tr
                       key={item.id}
@@ -746,7 +647,7 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
                       </td>
                       <td className="py-4 px-6 text-right">
                         <span className="text-white font-semibold">
-                          {formatCurrency(item.actualCost)}
+                          {formatCurrency(item.actualCost || 0)}
                         </span>
                       </td>
                       <td className="py-4 px-6 text-right">
@@ -771,13 +672,13 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
                 </td>
                 <td className="py-4 px-6 text-right">
                   <span className="text-white font-bold">
-                    {formatCurrency(lineItems.reduce((sum, item) => sum + item.actualCost, 0))}
+                    {formatCurrency(lineItems.reduce((sum, item) => sum + (item.actualCost || 0), 0))}
                   </span>
                 </td>
                 <td className="py-4 px-6 text-right">
                   <span className="text-blue-400 font-bold">
                     {lineItems.length > 0 ? formatPercentage(
-                      ((lineItems.reduce((sum, item) => sum + item.actualCost, 0) - 
+                      ((lineItems.reduce((sum, item) => sum + (item.actualCost || 0), 0) - 
                         lineItems.reduce((sum, item) => sum + item.estimatedCost, 0)) / 
                        lineItems.reduce((sum, item) => sum + item.estimatedCost, 0)) * 100
                     ) : '0%'}

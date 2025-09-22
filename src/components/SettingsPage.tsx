@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import PageHeader from './PageHeader';
 import Card from './Card';
 import Button from './Button';
@@ -6,6 +6,8 @@ import ThemeToggle from './ThemeToggle';
 import { Building2, CreditCard, Users2, Link, Shield, ChevronRight, Palette, Mail, Trash2, UserCheck, AlertCircle } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useApp } from '../contexts/AppContext';
+import { useTeamMembers } from '../utils/queries';
+import { useTeamMutations } from '../contexts/TeamMutations';
 
 // Define the navigation items
 const navItems = [
@@ -48,56 +50,22 @@ const navItems = [
 ];
 
 // Team Member interface
-interface TeamMember {
-  id: number;
-  name: string;
-  email: string;
-  role: string;
-  profilePictureUrl?: string;
-  created_at: string;
-}
+
 
 // Team Management Component
 const TeamManagementContent = () => {
-  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState('Member');
-  const [loading, setLoading] = useState(false);
   const [inviting, setInviting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const { showConfirmationModal } = useApp();
 
-  // Fetch team members
-  const fetchTeamMembers = useCallback(async () => {
-    setLoading(true);
-    try {
-      const response = await fetch('http://localhost:4000/api/team/members', {
-        credentials: 'include'
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch team members');
-      }
-      
-      const data = await response.json();
-      if (data.success) {
-        setTeamMembers(data.data);
-      } else {
-        throw new Error(data.error || 'Failed to fetch team members');
-      }
-    } catch (err) {
-      console.error('Error fetching team members:', err);
-      setError('Failed to load team members');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // Load team members on component mount
-  useEffect(() => {
-    fetchTeamMembers();
-  }, [fetchTeamMembers]);
+  // Use React Query for data fetching
+  const { data: teamMembers = [], isLoading: loading, error: queryError } = useTeamMembers();
+  
+  // Use React Query mutations
+  const { inviteTeamMember, updateMemberRole, removeMember } = useTeamMutations();
 
   // Send invitation
   const handleSendInvite = async (e) => {
@@ -109,30 +77,13 @@ const TeamManagementContent = () => {
     setSuccess('');
 
     try {
-      const response = await fetch('http://localhost:4000/api/team/invite', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        credentials: 'include',
-        body: JSON.stringify({
-          email: inviteEmail.trim(),
-          role: inviteRole
-        })
-      });
-
-      const data = await response.json();
-      
-      if (data.success) {
-        setSuccess(`Invitation sent to ${inviteEmail}`);
-        setInviteEmail('');
-        setInviteRole('Member');
-      } else {
-        setError(data.error || 'Failed to send invitation');
-      }
-    } catch (err) {
+      await inviteTeamMember(inviteEmail.trim(), inviteRole);
+      setSuccess(`Invitation sent to ${inviteEmail}`);
+      setInviteEmail('');
+      setInviteRole('Member');
+    } catch (err: any) {
       console.error('Error sending invitation:', err);
-      setError('Failed to send invitation. Please try again.');
+      setError(err.message || 'Failed to send invitation. Please try again.');
     } finally {
       setInviting(false);
     }
@@ -141,26 +92,13 @@ const TeamManagementContent = () => {
   // Update user role
   const handleRoleChange = async (userId, newRole, userName) => {
     try {
-      const response = await fetch(`http://localhost:4000/api/team/members/${userId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        credentials: 'include',
-        body: JSON.stringify({ role: newRole })
-      });
-
-      const data = await response.json();
-      
-      if (data.success) {
-        setSuccess(`${userName}'s role updated to ${newRole}`);
-        fetchTeamMembers(); // Refresh the list
-      } else {
-        setError(data.error || 'Failed to update role');
-      }
-    } catch (err) {
+      await updateMemberRole(userId, newRole);
+      setSuccess(`${userName}'s role updated to ${newRole}`);
+      setError('');
+    } catch (err: any) {
       console.error('Error updating role:', err);
-      setError('Failed to update role. Please try again.');
+      setError(err.message || 'Failed to update role. Please try again.');
+      setSuccess('');
     }
   };
 
@@ -174,22 +112,13 @@ const TeamManagementContent = () => {
       type: 'danger',
       onConfirm: async () => {
         try {
-          const response = await fetch(`http://localhost:4000/api/team/members/${userId}`, {
-            method: 'DELETE',
-            credentials: 'include'
-          });
-
-          const data = await response.json();
-          
-          if (data.success) {
-            setSuccess(data.message);
-            fetchTeamMembers(); // Refresh the list
-          } else {
-            setError(data.error || 'Failed to remove team member');
-          }
-        } catch (err) {
+          await removeMember(userId);
+          setSuccess(`${userName} has been removed from the team`);
+          setError('');
+        } catch (err: any) {
           console.error('Error removing team member:', err);
-          setError('Failed to remove team member. Please try again.');
+          setError(err.message || 'Failed to remove team member. Please try again.');
+          setSuccess('');
         }
       }
     });
@@ -200,10 +129,10 @@ const TeamManagementContent = () => {
   return (
     <div className="space-y-8">
       {/* Status Messages */}
-      {error && (
+      {(error || queryError) && (
         <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-3">
           <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
-          <p className="text-red-300 text-sm">{error}</p>
+          <p className="text-red-300 text-sm">{error || queryError?.message}</p>
           <button 
             onClick={() => setError('')}
             className="ml-auto text-red-400 hover:text-red-300"

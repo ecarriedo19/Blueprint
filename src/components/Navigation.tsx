@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { Building2, ChevronDown, Menu, X, Calculator, BarChart3, Brain, Database, Shield, Link, FileText, Users, Video, TrendingUp, DollarSign } from 'lucide-react';
+import { useState } from 'react';
+import { ChevronDown, Menu, X, Calculator, BarChart3, Brain, Shield, Link, FileText, Users, Video } from 'lucide-react';
+import { Link as RouterLink } from 'react-router-dom';
 
 interface NavigationProps {
   onAuthClick: () => void;
@@ -138,6 +139,14 @@ export default function Navigation({ onAuthClick }: NavigationProps) {
               Customers
             </button>
 
+            {/* Pricing */}
+            <RouterLink 
+              to="/pricing"
+              className="px-4 py-2 rounded-lg text-gray-700 hover:text-gray-900 hover:shadow-lg hover:shadow-blue-200/50 transition-all duration-300"
+            >
+              Pricing
+            </RouterLink>
+
             {/* Resources Dropdown */}
             <div 
               className="relative"
@@ -245,6 +254,12 @@ export default function Navigation({ onAuthClick }: NavigationProps) {
               <button className="block w-full text-left px-4 py-2 text-gray-700 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition-colors">
                 Customers
               </button>
+              <RouterLink 
+                to="/pricing"
+                className="block w-full text-left px-4 py-2 text-gray-700 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition-colors"
+              >
+                Pricing
+              </RouterLink>
               <button className="block w-full text-left px-4 py-2 text-gray-700 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition-colors">
                 Resources
               </button>

@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { useProjects } from '../contexts/ProjectState';
+import React, { useState } from 'react';
+import { useProjects } from '../utils/queries';
+import { useProjects as useProjectMutations } from '../contexts/ProjectState';
 import Card from './Card';
 import Button from './Button';
 import PageHeader from './PageHeader';
@@ -220,7 +221,8 @@ const ProjectCard: React.FC<ProjectCardProps> = ({ project, onUpdate }) => {
 };
 
 const ProjectsPage: React.FC<ProjectsPageProps> = ({ currentUser }) => {
-  const { projects, addProject, updateProject, refreshProjects, loading, error } = useProjects();
+  const { data: projects = [], isLoading: loading, error } = useProjects();
+  const { addProject, updateProject } = useProjectMutations();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterPriority, setFilterPriority] = useState('all');
@@ -230,10 +232,6 @@ const ProjectsPage: React.FC<ProjectsPageProps> = ({ currentUser }) => {
     const userRole = currentUser?.role || 'Member';
     return userRole === 'Admin' || userRole === 'Member';
   };
-
-  useEffect(() => {
-    refreshProjects();
-  }, [refreshProjects]);
 
   const handleCreateProject = async (projectData: { name: string; description: string; status: string; priority: string }) => {
     try {
@@ -281,7 +279,7 @@ const ProjectsPage: React.FC<ProjectsPageProps> = ({ currentUser }) => {
 
       {error && (
         <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-          <p className="text-red-800 dark:text-red-200">{error}</p>
+          <p className="text-red-800 dark:text-red-200">{error instanceof Error ? error.message : 'An error occurred'}</p>
         </div>
       )}
 

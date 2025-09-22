@@ -1,24 +1,11 @@
-import { useState, useEffect } from 'react';
+
 import { BarChart3, TrendingUp, DollarSign, Activity, AlertTriangle } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import Card from './Card';
 import PageHeader from './PageHeader';
+import { useDashboardSummary, useCurrentUser } from '../utils/queries';
 
-interface DashboardData {
-  kpis: {
-    totalRevenue: number;
-    totalBudget: number;
-    profitMargin: number;
-    growthRate: number;
-    totalProjects: number;
-    activeProjects: number;
-  };
-  statusBreakdown: { [key: string]: number };
-  cashFlowData: Array<{
-    month: string;
-    revenue: number;
-  }>;
-}
+
 
 // Color palette for charts (using Tailwind colors)
 const CHART_COLORS = {
@@ -43,38 +30,8 @@ const STATUS_COLORS: { [key: string]: string } = {
 };
 
 export default function Dashboard() {
-  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetchDashboardData();
-  }, []);
-
-  const fetchDashboardData = async () => {
-    try {
-      setLoading(true);
-      const response = await fetch('http://localhost:4000/api/dashboard-summary', {
-        credentials: 'include'
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch dashboard data');
-      }
-
-      const result = await response.json();
-      if (result.success) {
-        setDashboardData(result.data);
-      } else {
-        throw new Error(result.error || 'Failed to load dashboard data');
-      }
-    } catch (err) {
-      console.error('Error fetching dashboard data:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load dashboard data');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { data: currentUser } = useCurrentUser();
+  const { data: dashboardData, isLoading: loading, error } = useDashboardSummary(!!currentUser);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -153,7 +110,27 @@ export default function Dashboard() {
     );
   }
 
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <PageHeader 
+          title="Dashboard" 
+          subtitle="Your construction business command center"
+        />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {[...Array(4)].map((_, i) => (
+            <Card key={i} variant="glass" className="h-32 animate-pulse">
+              <div className="h-full bg-white/5 rounded"></div>
+            </Card>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   if (error || !dashboardData) {
+    console.error('Dashboard error:', error);
+    console.log('Dashboard data:', dashboardData);
     return (
       <div className="space-y-6">
         <PageHeader 
@@ -163,7 +140,7 @@ export default function Dashboard() {
         <Card variant="glass" className="border-red-500/50 bg-red-500/10 text-center py-12">
           <div className="flex items-center justify-center gap-3 mb-4">
             <AlertTriangle className="w-6 h-6 text-red-400" />
-            <p className="text-red-300">{error || 'Failed to load dashboard data'}</p>
+            <p className="text-red-300">{error?.message || 'Failed to load dashboard data'}</p>
           </div>
         </Card>
       </div>
@@ -171,6 +148,26 @@ export default function Dashboard() {
   }
 
   const { kpis, cashFlowData } = dashboardData;
+  
+  // Add defensive checks for undefined data
+  if (!kpis) {
+    console.error('KPIs data is missing from dashboard response:', dashboardData);
+    return (
+      <div className="space-y-6">
+        <PageHeader 
+          title="Dashboard" 
+          subtitle="Your construction business command center"
+        />
+        <Card variant="glass" className="border-yellow-500/50 bg-yellow-500/10 text-center py-12">
+          <div className="flex items-center justify-center gap-3 mb-4">
+            <AlertTriangle className="w-6 h-6 text-yellow-400" />
+            <p className="text-yellow-300">Dashboard data structure is incomplete. Please check server configuration.</p>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+  
   const pieChartData = getPieChartData();
 
   return (

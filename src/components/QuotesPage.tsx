@@ -6,7 +6,8 @@ import Card from './Card';
 import Button from './Button';
 import QuoteModal from './QuoteModal';
 import UploadQuoteModal from './UploadQuoteModal';
-import { useQuotes, Quote } from '../contexts/QuoteContext';
+import { useQuotes } from '../utils/queries';
+import { useQuotes as useQuoteMutations, Quote } from '../contexts/QuoteContext';
 import { useApp } from '../contexts/AppContext';
 
 interface User {
@@ -22,7 +23,8 @@ interface QuotesPageProps {
 
 const QuotesPage = ({ currentUser }: QuotesPageProps) => {
   const navigate = useNavigate();
-  const { quotes, loading, error, deleteQuote } = useQuotes();
+  const { data: quotes = [], isLoading: loading, error } = useQuotes();
+  const { deleteQuote } = useQuoteMutations();
   const { showConfirmationModal } = useApp();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -441,7 +443,7 @@ const QuotesPage = ({ currentUser }: QuotesPageProps) => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
-            <p className="text-red-300">{error}</p>
+            <p className="text-red-300">{error?.message || 'An error occurred while loading quotes'}</p>
           </div>
         </Card>
       )}

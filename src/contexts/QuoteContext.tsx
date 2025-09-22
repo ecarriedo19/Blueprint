@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useCallback } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 export interface Quote {
   id: number;
@@ -15,9 +16,6 @@ export interface Quote {
 }
 
 interface QuoteContextType {
-  quotes: Quote[];
-  loading: boolean;
-  error: string | null;
   addQuote: (quoteData: {
     quoteName: string;
     status?: string;
@@ -32,6 +30,12 @@ interface QuoteContextType {
     description: string;
     estimatedCost: number;
   }) => Promise<any>;
+  updateLineItem: (itemId: number, quoteId: number, lineItemData: {
+    description: string;
+    estimatedCost: number;
+    actualCost?: number;
+  }) => Promise<any>;
+  deleteLineItem: (itemId: number, quoteId: number) => Promise<void>;
   updateQuote: (quoteId: number, updatedData: Partial<{
     quoteName: string;
     status: string;
@@ -43,7 +47,6 @@ interface QuoteContextType {
     budget: number;
   }>) => Promise<Quote>;
   deleteQuote: (quoteId: number) => Promise<void>;
-  refreshQuotes: () => Promise<void>;
 }
 
 interface QuoteProviderProps {
@@ -61,78 +64,20 @@ export const useQuotes = () => {
 };
 
 export const QuoteProvider: React.FC<QuoteProviderProps> = ({ children }) => {
-  const [quotes, setQuotes] = useState<Quote[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
-  const fetchQuotes = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      console.log('Fetching quotes from:', 'http://localhost:4000/api/quotes');
-      const response = await fetch('http://localhost:4000/api/quotes', {
-        credentials: 'include'
-      });
-
-      console.log('Response status:', response.status);
-      console.log('Response ok:', response.ok);
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          // User not authenticated, don't treat as error
-          console.log('User not authenticated, clearing quotes');
-          setQuotes([]);
-          setLoading(false);
-          return;
-        }
-        const errorText = await response.text();
-        console.error('Server response error:', errorText);
-        throw new Error(`Server error (${response.status}): ${errorText || 'Unknown server error'}`);
-      }
-
-      const data = await response.json();
-      console.log('Response data:', data);
-      
-      if (data.success) {
-        setQuotes(data.quotes || []);
-      } else {
-        throw new Error(data.error || 'Failed to fetch quotes');
-      }
-    } catch (err) {
-      console.error('Error fetching quotes:', err);
-      
-      // Provide more specific error messages
-      let errorMessage = 'Unknown error occurred';
-      if (err instanceof Error) {
-        if (err.message.includes('fetch')) {
-          errorMessage = 'Cannot connect to server. Please make sure the backend is running on port 4000.';
-        } else {
-          errorMessage = err.message;
-        }
-      }
-      
-      setError(errorMessage);
-      setQuotes([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const addQuote = useCallback(async (quoteData: {
-    quoteName: string;
-    status?: string;
-    timeToDevelop?: string;
-    timeToDevelopValue?: number;
-    timeToDevelopUnit?: string;
-    variancePercentage?: number;
-    quoteTotal?: number;
-    budget?: number;
-  }): Promise<Quote> => {
-    setError(null);
-
-    try {
-      const response = await fetch('http://localhost:4000/api/quotes', {
+  const addQuoteMutation = useMutation({
+    mutationFn: async (quoteData: {
+      quoteName: string;
+      status?: string;
+      timeToDevelop?: string;
+      timeToDevelopValue?: number;
+      timeToDevelopUnit?: string;
+      variancePercentage?: number;
+      quoteTotal?: number;
+      budget?: number;
+    }) => {
+      const response = await fetch('/api/quotes', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -148,34 +93,33 @@ export const QuoteProvider: React.FC<QuoteProviderProps> = ({ children }) => {
 
       const data = await response.json();
       if (data.success && data.quote) {
-        // Add the new quote to the current list
-        setQuotes(prevQuotes => [data.quote, ...prevQuotes]);
         return data.quote;
       } else {
         throw new Error(data.error || 'Failed to create quote');
       }
-    } catch (err) {
-      console.error('Error adding quote:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
-      setError(errorMessage);
-      throw new Error(errorMessage);
-    }
-  }, []);
+    },
+    onSuccess: () => {
+      // Invalidate and refetch quotes
+      queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+    },
+  });
 
-  const updateQuote = useCallback(async (quoteId: number, updatedData: Partial<{
-    quoteName: string;
-    status: string;
-    timeToDevelop: string;
-    timeToDevelopValue: number;
-    timeToDevelopUnit: string;
-    variancePercentage: number;
-    quoteTotal: number;
-    budget: number;
-  }>): Promise<Quote> => {
-    setError(null);
-
-    try {
-      const response = await fetch(`http://localhost:4000/api/quotes/${quoteId}`, {
+  const updateQuoteMutation = useMutation({
+    mutationFn: async ({ quoteId, updatedData }: { 
+      quoteId: number; 
+      updatedData: Partial<{
+        quoteName: string;
+        status: string;
+        timeToDevelop: string;
+        timeToDevelopValue: number;
+        timeToDevelopUnit: string;
+        variancePercentage: number;
+        quoteTotal: number;
+        budget: number;
+      }>
+    }) => {
+      const response = await fetch(`/api/quotes/${quoteId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -191,63 +135,57 @@ export const QuoteProvider: React.FC<QuoteProviderProps> = ({ children }) => {
 
       const data = await response.json();
       if (data.success && data.quote) {
-        // Update the quote in the current list
-        setQuotes(prevQuotes => 
-          prevQuotes.map(quote => 
-            quote.id === quoteId ? data.quote : quote
-          )
-        );
         return data.quote;
       } else {
         throw new Error(data.error || 'Failed to update quote');
       }
-    } catch (err) {
-      console.error('Error updating quote:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
-      setError(errorMessage);
-      throw new Error(errorMessage);
-    }
-  }, []);
+    },
+    onSuccess: (updatedQuote) => {
+      // Update individual quote cache and invalidate quotes list
+      queryClient.setQueryData(['quote', updatedQuote.id], updatedQuote);
+      queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+    },
+  });
 
-  const deleteQuote = useCallback(async (quoteId: number): Promise<void> => {
-    setError(null);
-
-    try {
-      const response = await fetch(`http://localhost:4000/api/quotes/${quoteId}`, {
+  const deleteQuoteMutation = useMutation({
+    mutationFn: async (quoteId: number) => {
+      const response = await fetch(`/api/quotes/${quoteId}`, {
         method: 'DELETE',
         credentials: 'include',
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+        throw new Error(errorData.error || 'Failed to delete quote: ' + response.status);
       }
 
       const data = await response.json();
       if (data.success) {
-        // Remove the quote from the current list
-        setQuotes(prevQuotes => 
-          prevQuotes.filter(quote => quote.id !== quoteId)
-        );
+        return data;
       } else {
         throw new Error(data.error || 'Failed to delete quote');
       }
-    } catch (err) {
-      console.error('Error deleting quote:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
-      setError(errorMessage);
-      throw new Error(errorMessage);
-    }
-  }, []);
+    },
+    onSuccess: (_, quoteId) => {
+      // Remove from cache and invalidate related queries
+      queryClient.removeQueries({ queryKey: ['quote', quoteId] });
+      queryClient.removeQueries({ queryKey: ['lineItems', quoteId] });
+      queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+      console.log('Quote deleted successfully');
+    },
+  });
 
-  const addLineItem = useCallback(async (quoteId: number, lineItemData: {
-    description: string;
-    estimatedCost: number;
-  }) => {
-    setError(null);
-
-    try {
-      const response = await fetch(`http://localhost:4000/api/quotes/${quoteId}/line-items`, {
+  const addLineItemMutation = useMutation({
+    mutationFn: async ({ quoteId, lineItemData }: {
+      quoteId: number;
+      lineItemData: {
+        description: string;
+        estimatedCost: number;
+      };
+    }) => {
+      const response = await fetch(`/api/quotes/${quoteId}/line-items`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -265,34 +203,140 @@ export const QuoteProvider: React.FC<QuoteProviderProps> = ({ children }) => {
       if (data.success && data.lineItem) {
         return data.lineItem;
       } else {
-        throw new Error(data.error || 'Failed to create line item');
+        throw new Error(data.error || 'Failed to add line item');
       }
-    } catch (err) {
-      console.error('Error adding line item:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
-      setError(errorMessage);
-      throw new Error(errorMessage);
-    }
-  }, []);
+    },
+    onSuccess: (_, { quoteId }) => {
+      // Invalidate line items for this quote and related data
+      queryClient.invalidateQueries({ queryKey: ['lineItems', quoteId] });
+      queryClient.invalidateQueries({ queryKey: ['quote', quoteId] });
+      queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+    },
+  });
 
-  const refreshQuotes = useCallback(async () => {
-    await fetchQuotes();
-  }, [fetchQuotes]);
+  const deleteLineItemMutation = useMutation({
+    mutationFn: async ({ itemId, quoteId: _ }: { itemId: number; quoteId: number }) => {
+      const response = await fetch(`/api/line-items/${itemId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
 
-  // Fetch quotes when the component mounts
-  useEffect(() => {
-    fetchQuotes();
-  }, [fetchQuotes]);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to delete line item');
+      }
+    },
+    onSuccess: (_, { quoteId }) => {
+      // Invalidate line items for this quote and related data
+      queryClient.invalidateQueries({ queryKey: ['lineItems', quoteId] });
+      queryClient.invalidateQueries({ queryKey: ['quote', quoteId] });
+      queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+    },
+  });
+
+  const updateLineItemMutation = useMutation({
+    mutationFn: async ({ itemId, quoteId: _, lineItemData }: {
+      itemId: number;
+      quoteId: number;
+      lineItemData: {
+        description: string;
+        estimatedCost: number;
+        actualCost?: number;
+      };
+    }) => {
+      const response = await fetch(`/api/line-items/${itemId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify(lineItemData),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (data.success && data.lineItem) {
+        return data.lineItem;
+      } else {
+        throw new Error(data.error || 'Failed to update line item');
+      }
+    },
+    onSuccess: (_, { quoteId }) => {
+      // Invalidate line items for this quote and related data
+      queryClient.invalidateQueries({ queryKey: ['lineItems', quoteId] });
+      queryClient.invalidateQueries({ queryKey: ['quote', quoteId] });
+      queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+    },
+  });
+
+  const addQuote = useCallback(async (quoteData: {
+    quoteName: string;
+    status?: string;
+    timeToDevelop?: string;
+    timeToDevelopValue?: number;
+    timeToDevelopUnit?: string;
+    variancePercentage?: number;
+    quoteTotal?: number;
+    budget?: number;
+  }): Promise<Quote> => {
+    return await addQuoteMutation.mutateAsync(quoteData);
+  }, [addQuoteMutation]);
+
+  const updateQuote = useCallback(async (quoteId: number, updatedData: Partial<{
+    quoteName: string;
+    status: string;
+    timeToDevelop: string;
+    timeToDevelopValue: number;
+    timeToDevelopUnit: string;
+    variancePercentage: number;
+    quoteTotal: number;
+    budget: number;
+  }>): Promise<Quote> => {
+    return await updateQuoteMutation.mutateAsync({ quoteId, updatedData });
+  }, [updateQuoteMutation]);
+
+  const deleteQuote = useCallback(async (quoteId: number): Promise<void> => {
+    await deleteQuoteMutation.mutateAsync(quoteId);
+  }, [deleteQuoteMutation]);
+
+  const addLineItem = useCallback(async (quoteId: number, lineItemData: {
+    description: string;
+    estimatedCost: number;
+  }) => {
+    return await addLineItemMutation.mutateAsync({ quoteId, lineItemData });
+  }, [addLineItemMutation]);
+
+  const deleteLineItem = useCallback(async (itemId: number, quoteId: number) => {
+    await deleteLineItemMutation.mutateAsync({ itemId, quoteId });
+  }, [deleteLineItemMutation]);
+
+  const updateLineItem = useCallback(async (itemId: number, quoteId: number, lineItemData: {
+    description: string;
+    estimatedCost: number;
+    actualCost?: number;
+  }) => {
+    return await updateLineItemMutation.mutateAsync({ itemId, quoteId, lineItemData });
+  }, [updateLineItemMutation]);
 
   const value: QuoteContextType = {
-    quotes,
-    loading,
-    error,
     addQuote,
     addLineItem,
+    updateLineItem,
+    deleteLineItem,
     updateQuote,
     deleteQuote,
-    refreshQuotes,
   };
 
   return (

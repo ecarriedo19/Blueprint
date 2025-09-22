@@ -1,4 +1,6 @@
 import React, { createContext, useContext, useReducer, useEffect, useCallback } from 'react';
+import { useNotificationsList } from '../utils/queries';
+import { useNotificationMutations } from './NotificationMutations';
 
 interface Notification {
   id: number;
@@ -11,20 +13,18 @@ interface NotificationState {
   notifications: Notification[];
   unreadCount: number;
   isConnected: boolean;
+  isLoading: boolean;
+  error: string | null;
 }
 
 type NotificationAction =
-  | { type: 'SET_NOTIFICATIONS'; payload: Notification[] }
   | { type: 'ADD_NOTIFICATION'; payload: Notification }
-  | { type: 'MARK_AS_READ'; payload: number }
-  | { type: 'MARK_ALL_AS_READ' }
-  | { type: 'SET_CONNECTION_STATUS'; payload: boolean }
-  | { type: 'SET_UNREAD_COUNT'; payload: number };
+  | { type: 'SET_CONNECTION_STATUS'; payload: boolean };
 
 interface NotificationContextType {
   state: NotificationState;
-  markAsRead: (id: number) => void;
-  markAllAsRead: () => void;
+  markAsRead: (id: number) => Promise<void>;
+  markAllAsRead: () => Promise<void>;
   fetchNotifications: () => void;
 }
 
@@ -32,14 +32,6 @@ const NotificationContext = createContext<NotificationContextType | undefined>(u
 
 const notificationReducer = (state: NotificationState, action: NotificationAction): NotificationState => {
   switch (action.type) {
-    case 'SET_NOTIFICATIONS': {
-      const unreadCount = action.payload.filter(n => !n.isRead).length;
-      return {
-        ...state,
-        notifications: action.payload,
-        unreadCount
-      };
-    }
     case 'ADD_NOTIFICATION': {
       const newNotifications = [action.payload, ...state.notifications];
       const unreadCount = newNotifications.filter(n => !n.isRead).length;
@@ -49,39 +41,10 @@ const notificationReducer = (state: NotificationState, action: NotificationActio
         unreadCount
       };
     }
-    case 'MARK_AS_READ': {
-      const updatedNotifications = state.notifications.map(notification =>
-        notification.id === action.payload
-          ? { ...notification, isRead: true }
-          : notification
-      );
-      const unreadCount = updatedNotifications.filter(n => !n.isRead).length;
-      return {
-        ...state,
-        notifications: updatedNotifications,
-        unreadCount
-      };
-    }
-    case 'MARK_ALL_AS_READ': {
-      const updatedNotifications = state.notifications.map(notification => ({
-        ...notification,
-        isRead: true
-      }));
-      return {
-        ...state,
-        notifications: updatedNotifications,
-        unreadCount: 0
-      };
-    }
     case 'SET_CONNECTION_STATUS':
       return {
         ...state,
         isConnected: action.payload
-      };
-    case 'SET_UNREAD_COUNT':
-      return {
-        ...state,
-        unreadCount: action.payload
       };
     default:
       return state;
@@ -91,7 +54,9 @@ const notificationReducer = (state: NotificationState, action: NotificationActio
 const initialState: NotificationState = {
   notifications: [],
   unreadCount: 0,
-  isConnected: false
+  isConnected: false,
+  isLoading: false,
+  error: null
 };
 
 interface NotificationProviderProps {
@@ -100,57 +65,54 @@ interface NotificationProviderProps {
 }
 
 export const NotificationProvider: React.FC<NotificationProviderProps> = ({ children, userId }) => {
-  const [state, dispatch] = useReducer(notificationReducer, initialState);
+  const [wsState, dispatch] = useReducer(notificationReducer, initialState);
+  
+  // Use React Query for data fetching
+  const { data: notifications = [], isLoading, error, refetch } = useNotificationsList();
+  
+  // Use React Query mutations
+  const { markAsRead: markAsReadMutation, markAllAsRead: markAllAsReadMutation } = useNotificationMutations();
 
-  // Fetch notifications from API
-  const fetchNotifications = useCallback(async () => {
-    if (!userId) return;
+  // Calculate unread count from React Query data
+  const unreadCount = notifications.filter((n: Notification) => !n.isRead).length;
 
-    try {
-      const response = await fetch('http://localhost:4000/api/notifications', {
-        credentials: 'include'
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        dispatch({ type: 'SET_NOTIFICATIONS', payload: data.data });
+  // Create combined state from React Query data and WebSocket state
+  const state: NotificationState = {
+    notifications: [...wsState.notifications, ...notifications].reduce((acc, notification) => {
+      // Remove duplicates, preferring WebSocket notifications (more recent)
+      const existingIndex = acc.findIndex(n => n.id === notification.id);
+      if (existingIndex >= 0) {
+        return acc;
       }
-    } catch (error) {
-      console.error('Error fetching notifications:', error);
-    }
-  }, [userId]);
+      return [...acc, notification];
+    }, [] as Notification[]),
+    unreadCount,
+    isConnected: wsState.isConnected,
+    isLoading,
+    error: error?.message || null
+  };
 
-  // Mark notification as read
+  // Fetch notifications (just refetch React Query)
+  const fetchNotifications = useCallback(() => {
+    refetch();
+  }, [refetch]);
+
+  // Wrap mutations with error handling
   const markAsRead = useCallback(async (id: number) => {
     try {
-      const response = await fetch(`http://localhost:4000/api/notifications/${id}/read`, {
-        method: 'PATCH',
-        credentials: 'include'
-      });
-      
-      if (response.ok) {
-        dispatch({ type: 'MARK_AS_READ', payload: id });
-      }
+      await markAsReadMutation(id);
     } catch (error) {
       console.error('Error marking notification as read:', error);
     }
-  }, []);
+  }, [markAsReadMutation]);
 
-  // Mark all notifications as read
   const markAllAsRead = useCallback(async () => {
     try {
-      const response = await fetch('http://localhost:4000/api/notifications/read-all', {
-        method: 'PATCH',
-        credentials: 'include'
-      });
-      
-      if (response.ok) {
-        dispatch({ type: 'MARK_ALL_AS_READ' });
-      }
+      await markAllAsReadMutation();
     } catch (error) {
       console.error('Error marking all notifications as read:', error);
     }
-  }, []);
+  }, [markAllAsReadMutation]);
 
   // WebSocket connection management
   useEffect(() => {
@@ -161,7 +123,10 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
 
     const connectWebSocket = () => {
       try {
-        ws = new WebSocket('ws://localhost:4000');
+        // Connect directly to WebSocket server (can't use Vite proxy for WebSocket)
+        const wsUrl = 'ws://localhost:4000';
+        console.log('Connecting to WebSocket:', wsUrl);
+        ws = new WebSocket(wsUrl);
         
         ws.onopen = () => {
           console.log('WebSocket connected');
