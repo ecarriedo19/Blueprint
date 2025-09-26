@@ -340,6 +340,8 @@ db.serialize(() => {
     phone TEXT,
     rating REAL,
     user_id INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users (id)
   )`);
 
@@ -400,6 +402,20 @@ db.serialize(() => {
     });
   });
 
+  // Create change_orders table for tracking change orders on quotes
+  db.run(`CREATE TABLE IF NOT EXISTS change_orders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    description TEXT NOT NULL,
+    amount REAL NOT NULL,
+    status TEXT DEFAULT 'Pending',
+    quoteId INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (quoteId) REFERENCES quotes (id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users (id)
+  )`);
+
   // Insert default company profile if it doesn't exist
   db.run(`INSERT OR IGNORE INTO company_profile (id, company_name) VALUES ('default', 'Company Co')`);
 
@@ -435,6 +451,41 @@ db.serialize(() => {
     
     if (hasEmailAttempts && hasLastAttempt) {
       console.log('✅ invitations table columns already exist');
+    }
+  });
+
+  // Check and add missing timestamp columns to vendors table
+  db.all("PRAGMA table_info(vendors)", (err, columns) => {
+    if (err) {
+      console.error('Error checking vendors table columns:', err);
+      return;
+    }
+
+    const hasCreatedAt = columns.some(col => col.name === 'created_at');
+    const hasUpdatedAt = columns.some(col => col.name === 'updated_at');
+
+    if (!hasCreatedAt) {
+      db.run(`ALTER TABLE vendors ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP`, (err) => {
+        if (err) {
+          console.error('Error adding created_at column to vendors:', err);
+        } else {
+          console.log('✅ Added created_at column to vendors table');
+        }
+      });
+    }
+
+    if (!hasUpdatedAt) {
+      db.run(`ALTER TABLE vendors ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP`, (err) => {
+        if (err) {
+          console.error('Error adding updated_at column to vendors:', err);
+        } else {
+          console.log('✅ Added updated_at column to vendors table');
+        }
+      });
+    }
+
+    if (hasCreatedAt && hasUpdatedAt) {
+      console.log('✅ vendors table timestamp columns already exist');
     }
   });
 
@@ -2061,6 +2112,21 @@ app.get('/api/quotes/:id/pdf', requireAuth, async (req, res) => {
       );
     });
 
+    // Fetch change orders
+    const changeOrders = await new Promise((resolve, reject) => {
+      db.all(
+        `SELECT id, description, amount, status, created_at, updated_at
+         FROM change_orders 
+         WHERE quoteId = ? AND user_id = ? 
+         ORDER BY created_at ASC`,
+        [quoteId, userId],
+        (err, results) => {
+          if (err) reject(err);
+          else resolve(results || []);
+        }
+      );
+    });
+
     // Fetch company profile
     const companyProfile = await new Promise((resolve, reject) => {
       db.get(
@@ -2122,7 +2188,11 @@ app.get('/api/quotes/:id/pdf', requireAuth, async (req, res) => {
 
     // Calculate totals and metrics
     const totalEstimated = lineItems.reduce((sum, item) => sum + (item.estimatedCost || 0), 0);
-    const totalActual = lineItems.reduce((sum, item) => sum + (item.actualCost || 0), 0);
+    const lineItemsActual = lineItems.reduce((sum, item) => sum + (item.actualCost || 0), 0);
+    const approvedChangeOrdersTotal = changeOrders
+      .filter(co => co.status === 'Approved')
+      .reduce((sum, co) => sum + co.amount, 0);
+    const totalActual = lineItemsActual + approvedChangeOrdersTotal;
     const totalVariance = totalEstimated === 0 ? 0 : ((totalActual - totalEstimated) / totalEstimated) * 100;
     const profitMargin = totalActual === 0 ? 0 : ((quote.quoteTotal - totalActual) / totalActual) * 100;
     const overallVariance = quote.quoteTotal === 0 ? 0 : ((totalActual - quote.quoteTotal) / quote.quoteTotal) * 100;
@@ -2138,6 +2208,19 @@ app.get('/api/quotes/:id/pdf', requireAuth, async (req, res) => {
         varianceClass: getVarianceClass(variance)
       };
     });
+
+    // Process change orders for template
+    const processedChangeOrders = changeOrders.map(co => ({
+      description: co.description,
+      amount: formatCurrency(co.amount),
+      status: co.status,
+      statusClass: co.status.toLowerCase(),
+      createdAt: new Date(co.created_at).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      })
+    }));
 
     // Replace template placeholders
     const replacements = {
@@ -2189,6 +2272,33 @@ app.get('/api/quotes/:id/pdf', requireAuth, async (req, res) => {
       htmlTemplate = htmlTemplate.replace('{{#if hasLineItems}}', '<!--');
       htmlTemplate = htmlTemplate.replace('{{else}}', '');
       htmlTemplate = htmlTemplate.replace('{{/if}}', '');
+    }
+
+    // Handle conditional change orders rendering
+    if (changeOrders.length > 0) {
+      htmlTemplate = htmlTemplate.replace('{{#if hasChangeOrders}}', '');
+      htmlTemplate = htmlTemplate.replace('{{/if}}', '');
+      htmlTemplate = htmlTemplate.replace('{{approvedChangeOrdersTotal}}', formatCurrency(approvedChangeOrdersTotal));
+      
+      // Generate change orders HTML
+      let changeOrdersHtml = '';
+      processedChangeOrders.forEach(co => {
+        changeOrdersHtml += `
+        <tr>
+          <td>${co.description}</td>
+          <td style="text-align: right;" class="amount">${co.amount}</td>
+          <td style="text-align: center;">
+            <span class="status-badge status-${co.statusClass}">${co.status}</span>
+          </td>
+          <td style="text-align: center;">${co.createdAt}</td>
+        </tr>`;
+      });
+      htmlTemplate = htmlTemplate.replace('{{#each changeOrders}}', '');
+      htmlTemplate = htmlTemplate.replace('{{/each}}', '');
+      htmlTemplate = htmlTemplate.replace(/<tr>\s*<td>\{\{this\.description\}\}<\/td>[\s\S]*?<td style="text-align: center;">\{\{this\.createdAt\}\}<\/td>\s*<\/tr>/g, changeOrdersHtml);
+    } else {
+      htmlTemplate = htmlTemplate.replace('{{#if hasChangeOrders}}', '<!--');
+      htmlTemplate = htmlTemplate.replace('{{/if}}', '-->');
     }
 
     // Generate PDF using Puppeteer
@@ -2645,6 +2755,364 @@ app.delete('/api/line-items/:itemId', checkPermission(['Admin', 'Member']), (req
             success: true,
             message: 'Line item deleted successfully',
             deletedLineItem: lineItem
+          });
+        }
+      );
+    }
+  );
+});
+
+// Change Orders API Endpoints
+
+// Get all change orders for a specific quote
+app.get('/api/quotes/:quoteId/change-orders', requireAuth, (req, res) => {
+  console.log('🔍 GET /api/quotes/:quoteId/change-orders - Request received for user:', req.session.userId);
+  console.log('Quote ID:', req.params.quoteId);
+  
+  const quoteId = parseInt(req.params.quoteId);
+  const userId = req.session.userId;
+
+  if (!quoteId || isNaN(quoteId)) {
+    console.log('❌ Validation failed: Invalid quote ID');
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Invalid quote ID' 
+    });
+  }
+
+  // First verify the quote belongs to the user
+  db.get(
+    'SELECT id FROM quotes WHERE id = ? AND user_id = ?',
+    [quoteId, userId],
+    (err, quote) => {
+      if (err) {
+        console.error('❌ Database error:', err);
+        return res.status(500).json({ 
+          success: false, 
+          error: 'Database error while verifying quote ownership' 
+        });
+      }
+
+      if (!quote) {
+        console.log('❌ Quote not found or access denied');
+        return res.status(404).json({ 
+          success: false, 
+          error: 'Quote not found or access denied' 
+        });
+      }
+
+      // Get change orders for this quote
+      db.all(
+        'SELECT * FROM change_orders WHERE quoteId = ? AND user_id = ? ORDER BY created_at DESC',
+        [quoteId, userId],
+        (err, changeOrders) => {
+          if (err) {
+            console.error('❌ Database error:', err);
+            return res.status(500).json({ 
+              success: false, 
+              error: 'Database error while fetching change orders' 
+            });
+          }
+
+          console.log(`✅ Successfully fetched ${changeOrders.length} change orders`);
+          res.json({
+            success: true,
+            data: changeOrders
+          });
+        }
+      );
+    }
+  );
+});
+
+// Create a new change order for a specific quote
+app.post('/api/quotes/:quoteId/change-orders', checkPermission(['Admin', 'Member']), (req, res) => {
+  console.log('📝 POST /api/quotes/:quoteId/change-orders - Creating change order for user:', req.session.userId);
+  
+  const quoteId = parseInt(req.params.quoteId);
+  const userId = req.session.userId;
+  const { description, amount } = req.body;
+
+  // Validation
+  if (!quoteId || isNaN(quoteId)) {
+    console.log('❌ Validation failed: Invalid quote ID');
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Invalid quote ID' 
+    });
+  }
+
+  if (!description || description.trim().length === 0) {
+    console.log('❌ Validation failed: Description is required');
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Description is required' 
+    });
+  }
+
+  if (amount === undefined || amount === null || isNaN(parseFloat(amount))) {
+    console.log('❌ Validation failed: Amount is required and must be a number');
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Amount is required and must be a valid number' 
+    });
+  }
+
+  // First verify the quote belongs to the user
+  db.get(
+    'SELECT id FROM quotes WHERE id = ? AND user_id = ?',
+    [quoteId, userId],
+    (err, quote) => {
+      if (err) {
+        console.error('❌ Database error:', err);
+        return res.status(500).json({ 
+          success: false, 
+          error: 'Database error while verifying quote ownership' 
+        });
+      }
+
+      if (!quote) {
+        console.log('❌ Quote not found or access denied');
+        return res.status(404).json({ 
+          success: false, 
+          error: 'Quote not found or access denied' 
+        });
+      }
+
+      // Create the change order
+      db.run(
+        `INSERT INTO change_orders (description, amount, status, quoteId, user_id, created_at, updated_at) 
+         VALUES (?, ?, 'Pending', ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+        [description.trim(), parseFloat(amount), quoteId, userId],
+        function(err) {
+          if (err) {
+            console.error('❌ Database error:', err);
+            return res.status(500).json({ 
+              success: false, 
+              error: 'Database error while creating change order' 
+            });
+          }
+
+          const changeOrderId = this.lastID;
+          console.log(`✅ Change order created with ID: ${changeOrderId}`);
+
+          // Fetch the complete created change order
+          db.get(
+            'SELECT * FROM change_orders WHERE id = ?',
+            [changeOrderId],
+            (err, changeOrder) => {
+              if (err) {
+                console.error('❌ Database error fetching created change order:', err);
+                return res.status(500).json({ 
+                  success: false, 
+                  error: 'Change order created but error fetching details' 
+                });
+              }
+
+              // Create notification for change order creation
+              const notificationMessage = `New change order created: "${description.trim()}" for ${parseFloat(amount) >= 0 ? '+' : ''}$${Math.abs(parseFloat(amount)).toLocaleString()}`;
+              createNotification(userId, notificationMessage);
+
+              res.status(201).json({
+                success: true,
+                message: 'Change order created successfully',
+                data: changeOrder
+              });
+            }
+          );
+        }
+      );
+    }
+  );
+});
+
+// Update a change order (no longer affects quote total, only actual costs)
+app.put('/api/change-orders/:changeOrderId', checkPermission(['Admin', 'Member']), (req, res) => {
+  console.log('✏️ PUT /api/change-orders/:changeOrderId - Updating change order for user:', req.session.userId);
+  
+  const changeOrderId = parseInt(req.params.changeOrderId);
+  const userId = req.session.userId;
+  const { description, amount, status } = req.body;
+
+  if (!changeOrderId || isNaN(changeOrderId)) {
+    console.log('❌ Validation failed: Invalid change order ID');
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Invalid change order ID' 
+    });
+  }
+
+  // First, get the current change order to check ownership and current status
+  db.get(
+    'SELECT * FROM change_orders WHERE id = ? AND user_id = ?',
+    [changeOrderId, userId],
+    (err, currentChangeOrder) => {
+      if (err) {
+        console.error('❌ Database error:', err);
+        return res.status(500).json({ 
+          success: false, 
+          error: 'Database error while fetching change order' 
+        });
+      }
+
+      if (!currentChangeOrder) {
+        console.log('❌ Change order not found or access denied');
+        return res.status(404).json({ 
+          success: false, 
+          error: 'Change order not found or access denied' 
+        });
+      }
+
+      // Build the update query dynamically based on provided fields
+      const updates = [];
+      const values = [];
+
+      if (description !== undefined && description.trim().length > 0) {
+        updates.push('description = ?');
+        values.push(description.trim());
+      }
+
+      if (amount !== undefined && amount !== null && !isNaN(parseFloat(amount))) {
+        updates.push('amount = ?');
+        values.push(parseFloat(amount));
+      }
+
+      if (status !== undefined && status.trim().length > 0) {
+        updates.push('status = ?');
+        values.push(status.trim());
+      }
+
+      if (updates.length === 0) {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'No valid fields provided for update' 
+        });
+      }
+
+      updates.push('updated_at = CURRENT_TIMESTAMP');
+      values.push(changeOrderId);
+
+      const query = `UPDATE change_orders SET ${updates.join(', ')} WHERE id = ?`;
+
+      // Check if status changed for notification purposes
+      const oldStatus = currentChangeOrder.status;
+      const newStatus = status || oldStatus;
+      const statusChanged = status && oldStatus !== newStatus;
+
+      // Simple update without affecting quote total (change orders now affect actual costs)
+      db.run(query, values, function(err) {
+        if (err) {
+          console.error('❌ Database error:', err);
+          return res.status(500).json({ 
+            success: false, 
+            error: 'Database error while updating change order' 
+          });
+        }
+
+        if (this.changes === 0) {
+          return res.status(404).json({ 
+            success: false, 
+            error: 'Change order not found' 
+          });
+        }
+
+        // Fetch the updated change order
+        db.get(
+          'SELECT * FROM change_orders WHERE id = ?',
+          [changeOrderId],
+          (err, updatedChangeOrder) => {
+            if (err) {
+              console.error('❌ Database error fetching updated change order:', err);
+              return res.status(500).json({ 
+                success: false, 
+                error: 'Change order updated but error fetching details' 
+              });
+            }
+
+            // Create notification for status change
+            if (statusChanged) {
+              const notificationMessage = `Change order "${updatedChangeOrder.description}" status changed to ${newStatus}`;
+              createNotification(userId, notificationMessage);
+            }
+
+            console.log('✅ Change order updated successfully');
+            res.json({
+              success: true,
+              message: 'Change order updated successfully',
+              data: updatedChangeOrder
+            });
+          }
+        );
+      });
+    }
+  );
+});
+
+// Delete a change order
+app.delete('/api/change-orders/:changeOrderId', checkPermission(['Admin', 'Member']), (req, res) => {
+  console.log('🗑️ DELETE /api/change-orders/:changeOrderId - Deleting change order for user:', req.session.userId);
+  
+  const changeOrderId = parseInt(req.params.changeOrderId);
+  const userId = req.session.userId;
+
+  if (!changeOrderId || isNaN(changeOrderId)) {
+    console.log('❌ Validation failed: Invalid change order ID');
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Invalid change order ID' 
+    });
+  }
+
+  // First get the change order to check ownership
+  db.get(
+    'SELECT * FROM change_orders WHERE id = ? AND user_id = ?',
+    [changeOrderId, userId],
+    (err, changeOrder) => {
+      if (err) {
+        console.error('❌ Database error:', err);
+        return res.status(500).json({ 
+          success: false, 
+          error: 'Database error while fetching change order' 
+        });
+      }
+
+      if (!changeOrder) {
+        console.log('❌ Change order not found or access denied');
+        return res.status(404).json({ 
+          success: false, 
+          error: 'Change order not found or access denied' 
+        });
+      }
+
+      // Simple delete without affecting quote total (change orders now affect actual costs)
+      db.run(
+        'DELETE FROM change_orders WHERE id = ? AND user_id = ?',
+        [changeOrderId, userId],
+        function(err) {
+          if (err) {
+            console.error('❌ Database error:', err);
+            return res.status(500).json({ 
+              success: false, 
+              error: 'Database error while deleting change order' 
+            });
+          }
+
+          if (this.changes === 0) {
+            return res.status(404).json({ 
+              success: false, 
+              error: 'Change order not found' 
+            });
+          }
+
+          // Create notification for deletion
+          const notificationMessage = `Change order "${changeOrder.description}" was deleted`;
+          createNotification(userId, notificationMessage);
+
+          console.log('✅ Change order deleted successfully');
+          res.json({
+            success: true,
+            message: 'Change order deleted successfully',
+            deletedChangeOrder: changeOrder
           });
         }
       );
@@ -3766,6 +4234,265 @@ app.post('/api/notifications/test', requireAuth, (req, res) => {
   createNotification(userId, testMessage);
   
   res.json({ success: true, message: 'Test notification created' });
+});
+
+// Vendors & Subcontractors API Endpoints
+
+// Get all vendors for the authenticated user
+app.get('/api/vendors', requireAuth, (req, res) => {
+  console.log('🔍 GET /api/vendors - Fetching vendors for user:', req.session.userId);
+  
+  db.all(
+    `SELECT 
+      id, name, specialty, contact_email as contactEmail, phone, rating, user_id, 
+      created_at, updated_at
+     FROM vendors 
+     WHERE user_id = ? 
+     ORDER BY name ASC`,
+    [req.session.userId],
+    (err, rows) => {
+      if (err) {
+        console.error('❌ Error fetching vendors:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'Failed to fetch vendors'
+        });
+      }
+
+      console.log(`✅ Found ${rows.length} vendors for user ${req.session.userId}`);
+      res.json({
+        success: true,
+        data: rows
+      });
+    }
+  );
+});
+
+// Create a new vendor for the authenticated user
+app.post('/api/vendors', checkPermission(['Admin', 'Member']), (req, res) => {
+  console.log('📝 POST /api/vendors - Creating vendor for user:', req.session.userId);
+  
+  const { name, specialty, contactEmail, phone, rating } = req.body;
+
+  // Validation
+  if (!name || !name.trim()) {
+    return res.status(400).json({
+      success: false,
+      error: 'Vendor name is required'
+    });
+  }
+
+  const vendorData = {
+    name: name.trim(),
+    specialty: specialty?.trim() || '',
+    contactEmail: contactEmail?.trim() || '',
+    phone: phone?.trim() || '',
+    rating: rating ? parseFloat(rating) : null,
+    user_id: req.session.userId
+  };
+
+  db.run(
+    `INSERT INTO vendors (name, specialty, contact_email, phone, rating, user_id, created_at, updated_at) 
+     VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+    [vendorData.name, vendorData.specialty, vendorData.contactEmail, vendorData.phone, vendorData.rating, vendorData.user_id],
+    function (err) {
+      if (err) {
+        console.error('❌ Error creating vendor:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'Failed to create vendor'
+        });
+      }
+
+      console.log(`✅ Vendor created successfully with ID: ${this.lastID}`);
+      
+      // Create notification
+      createNotification(
+        req.session.userId,
+        `New vendor "${vendorData.name}" has been added to your directory`
+      );
+
+      res.status(201).json({
+        success: true,
+        data: {
+          id: this.lastID,
+          name: vendorData.name,
+          specialty: vendorData.specialty,
+          contactEmail: vendorData.contactEmail,
+          phone: vendorData.phone,
+          rating: vendorData.rating,
+          user_id: vendorData.user_id
+        }
+      });
+    }
+  );
+});
+
+// Update an existing vendor for the authenticated user
+app.put('/api/vendors/:vendorId', checkPermission(['Admin', 'Member']), (req, res) => {
+  const vendorId = parseInt(req.params.vendorId);
+  console.log('✏️ PUT /api/vendors/:vendorId - Updating vendor for user:', req.session.userId);
+  
+  if (!vendorId || isNaN(vendorId)) {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid vendor ID'
+    });
+  }
+
+  const { name, specialty, contactEmail, phone, rating } = req.body;
+
+  // Validation
+  if (!name || !name.trim()) {
+    return res.status(400).json({
+      success: false,
+      error: 'Vendor name is required'
+    });
+  }
+
+  const vendorData = {
+    name: name.trim(),
+    specialty: specialty?.trim() || '',
+    contactEmail: contactEmail?.trim() || '',
+    phone: phone?.trim() || '',
+    rating: rating ? parseFloat(rating) : null
+  };
+
+  // First verify the vendor belongs to the user
+  db.get(
+    'SELECT id, name FROM vendors WHERE id = ? AND user_id = ?',
+    [vendorId, req.session.userId],
+    (err, vendor) => {
+      if (err) {
+        console.error('❌ Error verifying vendor ownership:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'Failed to verify vendor ownership'
+        });
+      }
+
+      if (!vendor) {
+        return res.status(404).json({
+          success: false,
+          error: 'Vendor not found or access denied'
+        });
+      }
+
+      // Update the vendor
+      db.run(
+        `UPDATE vendors 
+         SET name = ?, specialty = ?, contact_email = ?, phone = ?, rating = ?, updated_at = CURRENT_TIMESTAMP
+         WHERE id = ? AND user_id = ?`,
+        [vendorData.name, vendorData.specialty, vendorData.contactEmail, vendorData.phone, vendorData.rating, vendorId, req.session.userId],
+        function (err) {
+          if (err) {
+            console.error('❌ Error updating vendor:', err);
+            return res.status(500).json({
+              success: false,
+              error: 'Failed to update vendor'
+            });
+          }
+
+          if (this.changes === 0) {
+            return res.status(404).json({
+              success: false,
+              error: 'Vendor not found'
+            });
+          }
+
+          console.log(`✅ Vendor updated successfully: ${vendorData.name}`);
+          
+          // Create notification
+          createNotification(
+            req.session.userId,
+            `Vendor "${vendorData.name}" has been updated`
+          );
+
+          res.json({
+            success: true,
+            data: {
+              id: vendorId,
+              name: vendorData.name,
+              specialty: vendorData.specialty,
+              contactEmail: vendorData.contactEmail,
+              phone: vendorData.phone,
+              rating: vendorData.rating
+            }
+          });
+        }
+      );
+    }
+  );
+});
+
+// Delete a vendor for the authenticated user
+app.delete('/api/vendors/:vendorId', checkPermission(['Admin', 'Member']), (req, res) => {
+  const vendorId = parseInt(req.params.vendorId);
+  console.log('🗑️ DELETE /api/vendors/:vendorId - Deleting vendor for user:', req.session.userId);
+  
+  if (!vendorId || isNaN(vendorId)) {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid vendor ID'
+    });
+  }
+
+  // First get vendor details for notification
+  db.get(
+    'SELECT id, name FROM vendors WHERE id = ? AND user_id = ?',
+    [vendorId, req.session.userId],
+    (err, vendor) => {
+      if (err) {
+        console.error('❌ Error fetching vendor for deletion:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'Failed to fetch vendor'
+        });
+      }
+
+      if (!vendor) {
+        return res.status(404).json({
+          success: false,
+          error: 'Vendor not found or access denied'
+        });
+      }
+
+      // Delete the vendor
+      db.run(
+        'DELETE FROM vendors WHERE id = ? AND user_id = ?',
+        [vendorId, req.session.userId],
+        function (err) {
+          if (err) {
+            console.error('❌ Error deleting vendor:', err);
+            return res.status(500).json({
+              success: false,
+              error: 'Failed to delete vendor'
+            });
+          }
+
+          if (this.changes === 0) {
+            return res.status(404).json({
+              success: false,
+              error: 'Vendor not found'
+            });
+          }
+
+          console.log(`✅ Vendor deleted successfully: ${vendor.name}`);
+          
+          // Create notification
+          createNotification(
+            req.session.userId,
+            `Vendor "${vendor.name}" has been removed from your directory`
+          );
+
+          res.json({
+            success: true,
+            message: 'Vendor deleted successfully'
+          });
+        }
+      );
+    }
+  );
 });
 
 // Endpoint to add/find user (legacy endpoint, keeping for compatibility)

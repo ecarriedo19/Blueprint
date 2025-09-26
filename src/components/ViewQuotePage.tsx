@@ -7,6 +7,7 @@ import Card from './Card';
 import Button from './Button';
 import PageHeader from './PageHeader';
 import LineItemModal from './LineItemModal';
+import ChangeOrderModal from './ChangeOrderModal';
 import Toast from './Toast';
 import AiInsights from './AiInsights';
 import { 
@@ -26,6 +27,18 @@ import {
   Check,
   Download
 } from 'lucide-react';
+
+// Change Order interface
+interface ChangeOrder {
+  id: number;
+  description: string;
+  amount: number;
+  status: string;
+  quoteId: number;
+  user_id: number;
+  created_at: string;
+  updated_at: string;
+}
 
 // ViewQuotePage Component
 interface User {
@@ -51,6 +64,10 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
   const { data: lineItems = [], isLoading: lineItemsLoading } = useLineItems(quoteId);
   const [isLineItemModalOpen, setIsLineItemModalOpen] = useState(false);
   const [lineItemToEdit, setLineItemToEdit] = useState<LineItem | null>(null);
+  const [isChangeOrderModalOpen, setIsChangeOrderModalOpen] = useState(false);
+  const [changeOrderToEdit, setChangeOrderToEdit] = useState<ChangeOrder | null>(null);
+  const [changeOrders, setChangeOrders] = useState<ChangeOrder[]>([]);
+  const [changeOrdersLoading, setChangeOrdersLoading] = useState(false);
   const [editingQuoteTotal, setEditingQuoteTotal] = useState(false);
   const [tempQuoteTotal, setTempQuoteTotal] = useState<string>('');
   const [toast, setToast] = useState<{ message: string; isVisible: boolean; type: 'success' | 'error' }>({ 
@@ -85,10 +102,52 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
     }
   }, [quote]);
 
+  // Fetch change orders for the quote
+  const fetchChangeOrders = useCallback(async () => {
+    if (!quoteId) return;
+
+    setChangeOrdersLoading(true);
+    try {
+      const response = await fetch(`/api/quotes/${quoteId}/change-orders`, {
+        credentials: 'include'
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch change orders');
+      }
+
+      const result = await response.json();
+      if (result.success) {
+        setChangeOrders(result.data);
+      } else {
+        throw new Error(result.error || 'Failed to fetch change orders');
+      }
+    } catch (error) {
+      console.error('Error fetching change orders:', error);
+      showToast(
+        error instanceof Error ? error.message : 'Failed to load change orders',
+        'error'
+      );
+    } finally {
+      setChangeOrdersLoading(false);
+    }
+  }, [quoteId, showToast]);
+
+  // Fetch change orders when quote is loaded
+  useEffect(() => {
+    if (quote) {
+      fetchChangeOrders();
+    }
+  }, [quote, fetchChangeOrders]);
+
   // Dynamic calculations
   const calculateActualCost = useCallback(() => {
-    return lineItems.reduce((sum, item) => sum + (item.actualCost || 0), 0);
-  }, [lineItems]);
+    const lineItemsTotal = lineItems.reduce((sum, item) => sum + (item.actualCost || 0), 0);
+    const approvedChangeOrdersTotal = changeOrders
+      .filter(co => co.status === 'Approved')
+      .reduce((sum, co) => sum + co.amount, 0);
+    return lineItemsTotal + approvedChangeOrdersTotal;
+  }, [lineItems, changeOrders]);
 
   const calculateProfitMargin = useCallback(() => {
     if (!quote || quote.quoteTotal === 0) return 0;
@@ -144,6 +203,19 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
         return 'text-red-400';
       default:
         return 'text-slate-400';
+    }
+  };
+
+  const getChangeOrderStatusColor = (status: string) => {
+    switch (status.toLowerCase()) {
+      case 'pending':
+        return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
+      case 'approved':
+        return 'bg-green-500/20 text-green-400 border-green-500/30';
+      case 'rejected':
+        return 'bg-red-500/20 text-red-400 border-red-500/30';
+      default:
+        return 'bg-slate-500/20 text-slate-400 border-slate-500/30';
     }
   };
 
@@ -249,6 +321,88 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
   const handleLineItemSuccess = (message: string, type: 'success' | 'error' = 'success') => {
     showToast(message, type);
     // React Query will automatically refresh the data
+  };
+
+  // Change Order CRUD Functions
+  const handleAddChangeOrder = () => {
+    setChangeOrderToEdit(null);
+    setIsChangeOrderModalOpen(true);
+  };
+
+  const handleEditChangeOrder = (changeOrder: ChangeOrder) => {
+    setChangeOrderToEdit(changeOrder);
+    setIsChangeOrderModalOpen(true);
+  };
+
+  const handleDeleteChangeOrder = (changeOrder: ChangeOrder) => {
+    showConfirmationModal({
+      title: 'Delete Change Order',
+      message: `Are you sure you want to delete this change order: "${changeOrder.description}"? This action cannot be undone.`,
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      type: 'danger',
+      onConfirm: async () => {
+        try {
+          const response = await fetch(`/api/change-orders/${changeOrder.id}`, {
+            method: 'DELETE',
+            credentials: 'include'
+          });
+
+          const result = await response.json();
+
+          if (!response.ok) {
+            throw new Error(result.error || 'Failed to delete change order');
+          }
+
+          showToast('Change order deleted successfully!');
+          fetchChangeOrders(); // Refresh the list
+        } catch (error) {
+          console.error('Failed to delete change order:', error);
+          showToast(
+            error instanceof Error ? error.message : 'Failed to delete change order',
+            'error'
+          );
+        }
+      }
+    });
+  };
+
+  const handleChangeOrderStatusUpdate = async (changeOrder: ChangeOrder, newStatus: string) => {
+    try {
+      const response = await fetch(`/api/change-orders/${changeOrder.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ status: newStatus })
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to update change order status');
+      }
+
+      showToast(`Change order ${newStatus.toLowerCase()}!`);
+      fetchChangeOrders(); // Refresh the list to update actual cost calculations
+    } catch (error) {
+      console.error('Failed to update change order status:', error);
+      showToast(
+        error instanceof Error ? error.message : 'Failed to update change order status',
+        'error'
+      );
+    }
+  };
+
+  const handleCloseChangeOrderModal = () => {
+    setIsChangeOrderModalOpen(false);
+    setChangeOrderToEdit(null);
+  };
+
+  const handleChangeOrderSuccess = (message: string, type: 'success' | 'error' = 'success') => {
+    showToast(message, type);
+    fetchChangeOrders(); // Refresh the change orders list
   };
 
   const calculateVariance = (estimated: number, actual: number) => {
@@ -690,6 +844,199 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
         </div>
       </Card>
 
+
+
+      {/* Change Orders Section */}
+      <Card variant="glass" padding="lg">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h2 className="text-2xl font-bold text-white mb-2">Change Orders</h2>
+            <p className="text-slate-400">
+              Track and manage changes to the original scope of work
+            </p>
+          </div>
+          {canModifyQuotes() && (
+            <Button
+              variant="primary"
+              onClick={handleAddChangeOrder}
+              className="flex items-center gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              Add Change Order
+            </Button>
+          )}
+        </div>
+
+        {changeOrdersLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="w-8 h-8 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin"></div>
+            <span className="ml-3 text-slate-400">Loading change orders...</span>
+          </div>
+        ) : changeOrders.length === 0 ? (
+          <div className="text-center py-12">
+            <div className="w-16 h-16 bg-slate-700/50 rounded-full flex items-center justify-center mx-auto mb-4">
+              <FileText className="w-8 h-8 text-slate-400" />
+            </div>
+            <h3 className="text-lg font-semibold text-slate-300 mb-2">No Change Orders</h3>
+            <p className="text-slate-400 mb-6">
+              No change orders have been created for this quote yet.
+            </p>
+            {canModifyQuotes() && (
+              <Button
+                variant="outline"
+                onClick={handleAddChangeOrder}
+                className="flex items-center gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                Create First Change Order
+              </Button>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {changeOrders.map((changeOrder) => (
+              <div
+                key={changeOrder.id}
+                className="bg-slate-800/30 border border-slate-600/30 rounded-xl p-6 hover:bg-slate-800/40 transition-colors"
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-2">
+                      <h3 className="text-lg font-semibold text-white">
+                        {changeOrder.description}
+                      </h3>
+                      <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium border ${getChangeOrderStatusColor(changeOrder.status)}`}>
+                        {changeOrder.status}
+                      </span>
+                    </div>
+                    
+                    <div className="flex items-center gap-6 text-sm text-slate-400">
+                      <div className="flex items-center gap-2">
+                        <DollarSign className="w-4 h-4" />
+                        <span className={`font-medium ${
+                          changeOrder.amount >= 0 ? 'text-green-400' : 'text-red-400'
+                        }`}>
+                          {changeOrder.amount >= 0 ? '+' : ''}
+                          {formatCurrency(changeOrder.amount)}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Calendar className="w-4 h-4" />
+                        <span>
+                          Created {new Date(changeOrder.created_at).toLocaleDateString()}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {canModifyQuotes() && (
+                    <div className="flex items-center gap-2 ml-4">
+                      {/* Status Action Buttons */}
+                      {changeOrder.status === 'Pending' && (
+                        <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleChangeOrderStatusUpdate(changeOrder, 'Approved')}
+                            className="flex items-center gap-1 text-green-400 border-green-500/30 hover:bg-green-500/10"
+                          >
+                            <Check className="w-3 h-3" />
+                            Approve
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleChangeOrderStatusUpdate(changeOrder, 'Rejected')}
+                            className="flex items-center gap-1 text-red-400 border-red-500/30 hover:bg-red-500/10"
+                          >
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                            Reject
+                          </Button>
+                        </>
+                      )}
+                      
+                      {changeOrder.status === 'Approved' && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleChangeOrderStatusUpdate(changeOrder, 'Pending')}
+                          className="flex items-center gap-1 text-yellow-400 border-yellow-500/30 hover:bg-yellow-500/10"
+                        >
+                          <Clock className="w-3 h-3" />
+                          Revert to Pending
+                        </Button>
+                      )}
+
+                      {changeOrder.status === 'Rejected' && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleChangeOrderStatusUpdate(changeOrder, 'Pending')}
+                          className="flex items-center gap-1 text-yellow-400 border-yellow-500/30 hover:bg-yellow-500/10"
+                        >
+                          <Clock className="w-3 h-3" />
+                          Revert to Pending
+                        </Button>
+                      )}
+
+                      {/* Edit and Delete Actions */}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleEditChangeOrder(changeOrder)}
+                        className="flex items-center gap-1 text-slate-400 hover:text-white"
+                      >
+                        <Edit2 className="w-3 h-3" />
+                        Edit
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDeleteChangeOrder(changeOrder)}
+                        className="flex items-center gap-1 text-red-400 hover:text-red-300"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        Delete
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+
+            {/* Change Orders Summary */}
+            <div className="border-t border-slate-600/50 pt-4 mt-6">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-400">
+                  Total Change Orders Impact:
+                </span>
+                <span className={`font-semibold ${
+                  changeOrders
+                    .filter(co => co.status === 'Approved')
+                    .reduce((sum, co) => sum + co.amount, 0) >= 0 
+                    ? 'text-green-400' 
+                    : 'text-red-400'
+                }`}>
+                  {changeOrders
+                    .filter(co => co.status === 'Approved')
+                    .reduce((sum, co) => sum + co.amount, 0) >= 0 ? '+' : ''}
+                  {formatCurrency(
+                    changeOrders
+                      .filter(co => co.status === 'Approved')
+                      .reduce((sum, co) => sum + co.amount, 0)
+                  )}
+                </span>
+              </div>
+              <div className="text-xs text-slate-500 mt-1">
+                Only approved change orders affect the actual costs
+              </div>
+            </div>
+          </div>
+        )}
+      </Card>
+
       {/* AI Insights Section */}
       <AiInsights quote={quote} lineItems={lineItems} />
 
@@ -699,6 +1046,15 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
         onClose={handleCloseLineItemModal}
         onSuccess={handleLineItemSuccess}
         itemToEdit={lineItemToEdit}
+        quoteId={parseInt(id!)}
+      />
+
+      {/* Change Order Modal */}
+      <ChangeOrderModal
+        isOpen={isChangeOrderModalOpen}
+        onClose={handleCloseChangeOrderModal}
+        onSuccess={handleChangeOrderSuccess}
+        changeOrderToEdit={changeOrderToEdit}
         quoteId={parseInt(id!)}
       />
 

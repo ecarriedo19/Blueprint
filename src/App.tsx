@@ -5,6 +5,7 @@ import { useCurrentUser } from './utils/queries';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { ProjectProvider } from './contexts/ProjectState';
 import { QuoteProvider } from './contexts/QuoteContext';
+import { VendorProvider } from './contexts/VendorContext';
 import { AppProvider, useApp } from './contexts/AppContext';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { NotificationMutationsProvider } from './contexts/NotificationMutations';
@@ -228,9 +229,11 @@ function App() {
         <ThemeProvider>
           <ProjectProvider>
             <QuoteProvider>
-              <Router>
-                <AppContent />
-              </Router>
+              <VendorProvider>
+                <Router>
+                  <AppContent />
+                </Router>
+              </VendorProvider>
             </QuoteProvider>
           </ProjectProvider>
         </ThemeProvider>
