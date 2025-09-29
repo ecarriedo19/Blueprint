@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Briefcase, FileText, BrainCircuit, Link as LinkIcon, Settings, LogOut, ChevronFirst, ChevronLast, Truck } from 'lucide-react';
+import { Home, Briefcase, FileText, BrainCircuit, Link as LinkIcon, Settings, LogOut, ChevronFirst, ChevronLast, Truck, BarChart3 } from 'lucide-react';
 
 interface SidebarProps {
   isSidebarOpen: boolean;
@@ -42,6 +42,9 @@ const Sidebar: React.FC<SidebarProps> = ({ isSidebarOpen, toggleSidebar, current
             </Link>
             <Link to="/ai-copilot">
               <SidebarItem icon={<BrainCircuit size={20} />} text="AI-Copilot" path="/ai-copilot" />
+            </Link>
+            <Link to="/reports">
+              <SidebarItem icon={<BarChart3 size={20} />} text="Reports" path="/reports" />
             </Link>
             <Link to="/vendors">
               <SidebarItem icon={<Truck size={20} />} text="Vendors Data" path="/vendors" />

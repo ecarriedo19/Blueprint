@@ -538,6 +538,23 @@ app.get('/api/test', (req, res) => {
   });
 });
 
+// DEVELOPMENT ONLY - Test session endpoint to create a session for user 1
+app.get('/api/test-session', (req, res) => {
+  req.session.userId = 1; // Set session for user ID 1
+  req.session.save((err) => {
+    if (err) {
+      console.error('❌ Error saving test session:', err);
+      return res.status(500).json({ error: 'Failed to create test session' });
+    }
+    console.log('✅ Test session created for user ID 1');
+    res.json({ 
+      message: 'Test session created successfully!', 
+      userId: req.session.userId,
+      timestamp: new Date().toISOString()
+    });
+  });
+});
+
 // Notification helper functions
 const createNotification = (userId, message) => {
   // Save notification to database
@@ -3999,6 +4016,336 @@ app.get('/api/notifications/unread-count', requireAuth, (req, res) => {
     }
   );
 });
+
+// Advanced Reporting API Endpoints
+
+// Get advanced reports with complex aggregations
+app.get('/api/reports', requireAuth, async (req, res) => {
+  console.log('📊 GET /api/reports - Advanced reporting request from user:', req.session.userId);
+  
+  const { reportName } = req.query;
+  const userId = req.session.userId;
+
+  if (!reportName) {
+    return res.status(400).json({
+      success: false,
+      error: 'reportName query parameter is required'
+    });
+  }
+
+  try {
+    let reportData;
+
+    switch (reportName.toLowerCase()) {
+      case 'profitability':
+        reportData = await generateProfitabilityReport(userId);
+        break;
+      case 'budgetvsactuals':
+      case 'budgetVsActuals': // Handle camelCase from frontend
+        reportData = await generateBudgetVsActualsReport(userId);
+        break;
+      case 'cashflow':
+      case 'cashFlow': // Handle camelCase from frontend
+        reportData = await generateCashFlowReport(userId);
+        break;
+      default:
+        return res.status(400).json({
+          success: false,
+          error: `Unknown report type: ${reportName}`
+        });
+    }
+
+    console.log(`✅ Generated ${reportName} report for user ${userId}`);
+    res.json({
+      success: true,
+      reportName,
+      data: reportData
+    });
+
+  } catch (error) {
+    console.error(`❌ Error generating ${reportName} report:`, error);
+    console.error('Error details:', error.message, error.stack);
+    res.status(500).json({
+      success: false,
+      error: `Failed to generate ${reportName} report: ${error.message}`
+    });
+  }
+});
+
+// Helper function to generate Quarterly Profitability Report
+async function generateProfitabilityReport(userId) {
+  return new Promise((resolve, reject) => {
+    console.log('📈 Generating profitability report for user:', userId);
+
+    // Get data for the last 4 quarters
+    const query = `
+      WITH quarter_data AS (
+        SELECT 
+          strftime('%Y', q.created_at) as year,
+          CASE 
+            WHEN strftime('%m', q.created_at) IN ('01', '02', '03') THEN 'Q1'
+            WHEN strftime('%m', q.created_at) IN ('04', '05', '06') THEN 'Q2'
+            WHEN strftime('%m', q.created_at) IN ('07', '08', '09') THEN 'Q3'
+            WHEN strftime('%m', q.created_at) IN ('10', '11', '12') THEN 'Q4'
+          END as quarter,
+          q.quoteTotal as revenue,
+          (
+            SELECT COALESCE(SUM(li.actualCost), 0) 
+            FROM line_items li 
+            WHERE li.quoteId = q.id
+          ) + (
+            SELECT COALESCE(SUM(co.amount), 0)
+            FROM change_orders co 
+            WHERE co.quoteId = q.id AND co.status = 'Approved'
+          ) as actualCosts
+        FROM quotes q
+        WHERE q.user_id = ? 
+          AND q.status IN ('Approved', 'Working on it', 'In Progress', 'Completed')
+          AND q.created_at >= date('now', '-15 months')
+        ORDER BY q.created_at DESC
+      )
+      SELECT 
+        year || '-' || quarter as period,
+        year,
+        quarter,
+        COALESCE(SUM(revenue), 0) as totalRevenue,
+        COALESCE(SUM(actualCosts), 0) as totalCosts,
+        COALESCE(SUM(revenue) - SUM(actualCosts), 0) as netProfit,
+        CASE 
+          WHEN SUM(actualCosts) > 0 
+          THEN ROUND(((SUM(revenue) - SUM(actualCosts)) / SUM(actualCosts)) * 100, 2)
+          ELSE 0 
+        END as profitMargin
+      FROM quarter_data
+      GROUP BY year, quarter
+      ORDER BY year DESC, quarter DESC
+      LIMIT 4
+    `;
+
+    db.all(query, [userId], (err, rows) => {
+      if (err) {
+        console.error('❌ Error executing profitability query:', err);
+        reject(err);
+        return;
+      }
+
+      // Ensure we have data for the last 4 quarters, fill with zeros if needed
+      const quarters = ['Q1', 'Q2', 'Q3', 'Q4'];
+      const currentYear = new Date().getFullYear();
+      const currentQuarter = Math.ceil((new Date().getMonth() + 1) / 3);
+      
+      const reportData = [];
+      const existingData = new Map(rows.map(row => [row.period, row]));
+
+      // Generate last 4 quarters
+      for (let i = 0; i < 4; i++) {
+        let year = currentYear;
+        let quarter = currentQuarter - i;
+        
+        if (quarter <= 0) {
+          quarter += 4;
+          year -= 1;
+        }
+        
+        const period = `${year}-Q${quarter}`;
+        const existing = existingData.get(period);
+        
+        if (existing) {
+          reportData.unshift({
+            period,
+            year: parseInt(existing.year),
+            quarter: existing.quarter,
+            totalRevenue: parseFloat(existing.totalRevenue) || 0,
+            totalCosts: parseFloat(existing.totalCosts) || 0,
+            netProfit: parseFloat(existing.netProfit) || 0,
+            profitMargin: parseFloat(existing.profitMargin) || 0
+          });
+        } else {
+          reportData.unshift({
+            period,
+            year,
+            quarter: `Q${quarter}`,
+            totalRevenue: 0,
+            totalCosts: 0,
+            netProfit: 0,
+            profitMargin: 0
+          });
+        }
+      }
+
+      console.log('✅ Profitability report generated with', reportData.length, 'quarters');
+      resolve(reportData);
+    });
+  });
+}
+
+// Helper function to generate Budget vs Actuals Report
+async function generateBudgetVsActualsReport(userId) {
+  return new Promise((resolve, reject) => {
+    console.log('📊 Generating budget vs actuals report for user:', userId);
+
+    const query = `
+      SELECT 
+        p.id as projectId,
+        p.name as projectName,
+        p.status as projectStatus,
+        p.created_at,
+        p.updated_at,
+        COALESCE(SUM(q.quoteTotal), 0) as totalBudget,
+        COALESCE(SUM(
+          (SELECT COALESCE(SUM(li.actualCost), 0) FROM line_items li WHERE li.quoteId = q.id) +
+          (SELECT COALESCE(SUM(co.amount), 0) FROM change_orders co WHERE co.quoteId = q.id AND co.status = 'Approved')
+        ), 0) as totalActual,
+        COUNT(q.id) as totalQuotes
+      FROM projects p
+      LEFT JOIN quotes q ON p.name = q.project_name AND q.user_id = p.user_id
+      WHERE p.user_id = ?
+      GROUP BY p.id, p.name, p.status, p.created_at, p.updated_at
+      ORDER BY p.updated_at DESC
+    `;
+
+    db.all(query, [userId], (err, rows) => {
+      if (err) {
+        console.error('❌ Error executing budget vs actuals query:', err);
+        reject(err);
+        return;
+      }
+
+      const reportData = rows.map(row => {
+        const budget = parseFloat(row.totalBudget) || 0;
+        const actual = parseFloat(row.totalActual) || 0;
+        const variance = actual - budget;
+        const variancePercentage = budget > 0 ? ((variance / budget) * 100) : 0;
+
+        return {
+          projectId: row.projectId,
+          projectName: row.projectName,
+          projectStatus: row.projectStatus,
+          totalBudget: budget,
+          totalActual: actual,
+          variance,
+          variancePercentage: Math.round(variancePercentage * 100) / 100,
+          totalQuotes: row.totalQuotes,
+          isOverBudget: variance > 0,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at
+        };
+      });
+
+      console.log('✅ Budget vs actuals report generated with', reportData.length, 'projects');
+      resolve(reportData);
+    });
+  });
+}
+
+// Helper function to generate Cash Flow Report
+async function generateCashFlowReport(userId) {
+  return new Promise((resolve, reject) => {
+    console.log('💰 Generating cash flow report for user:', userId);
+
+    // Get historical data for the past 6 months
+    const historicalQuery = `
+      SELECT 
+        strftime('%Y-%m', q.created_at) as month,
+        COALESCE(SUM(q.quoteTotal), 0) as revenue,
+        COALESCE(SUM(
+          (SELECT COALESCE(SUM(li.actualCost), 0) FROM line_items li WHERE li.quoteId = q.id) +
+          (SELECT COALESCE(SUM(co.amount), 0) FROM change_orders co WHERE co.quoteId = q.id AND co.status = 'Approved')
+        ), 0) as costs
+      FROM quotes q
+      WHERE q.user_id = ? 
+        AND q.status IN ('Approved', 'Working on it', 'In Progress', 'Completed')
+        AND q.created_at >= date('now', '-6 months')
+      GROUP BY strftime('%Y-%m', q.created_at)
+      ORDER BY month
+    `;
+
+    db.all(historicalQuery, [userId], (err, historicalRows) => {
+      if (err) {
+        console.error('❌ Error executing cash flow historical query:', err);
+        reject(err);
+        return;
+      }
+
+      // Calculate average monthly revenue for projections
+      const historicalData = historicalRows.map(row => ({
+        month: row.month,
+        revenue: parseFloat(row.revenue) || 0,
+        costs: parseFloat(row.costs) || 0,
+        netCashFlow: (parseFloat(row.revenue) || 0) - (parseFloat(row.costs) || 0),
+        type: 'historical'
+      }));
+
+      const avgRevenue = historicalData.length > 0 
+        ? historicalData.reduce((sum, item) => sum + item.revenue, 0) / historicalData.length
+        : 0;
+      const avgCosts = historicalData.length > 0 
+        ? historicalData.reduce((sum, item) => sum + item.costs, 0) / historicalData.length
+        : 0;
+
+      // Generate projected data for next 6 months
+      const projectedData = [];
+      const currentDate = new Date();
+      
+      for (let i = 1; i <= 6; i++) {
+        const projectedDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + i, 1);
+        const month = projectedDate.toISOString().substring(0, 7);
+        
+        // Add some variance to projections (±10%)
+        const revenueVariance = (Math.random() - 0.5) * 0.2 + 1; // 0.9 to 1.1
+        const costVariance = (Math.random() - 0.5) * 0.2 + 1;
+        
+        const projectedRevenue = avgRevenue * revenueVariance;
+        const projectedCosts = avgCosts * costVariance;
+        
+        projectedData.push({
+          month,
+          revenue: Math.round(projectedRevenue),
+          costs: Math.round(projectedCosts),
+          netCashFlow: Math.round(projectedRevenue - projectedCosts),
+          type: 'projected'
+        });
+      }
+
+      // Fill missing historical months with zeros
+      const allData = [];
+      const historicalMap = new Map(historicalData.map(item => [item.month, item]));
+      
+      // Generate last 6 months
+      for (let i = 5; i >= 0; i--) {
+        const date = new Date(currentDate.getFullYear(), currentDate.getMonth() - i, 1);
+        const month = date.toISOString().substring(0, 7);
+        
+        if (historicalMap.has(month)) {
+          allData.push(historicalMap.get(month));
+        } else {
+          allData.push({
+            month,
+            revenue: 0,
+            costs: 0,
+            netCashFlow: 0,
+            type: 'historical'
+          });
+        }
+      }
+
+      // Combine historical and projected data
+      const reportData = [...allData, ...projectedData];
+
+      console.log('✅ Cash flow report generated with', reportData.length, 'months');
+      resolve({
+        data: reportData,
+        summary: {
+          avgMonthlyRevenue: Math.round(avgRevenue),
+          avgMonthlyCosts: Math.round(avgCosts),
+          avgNetCashFlow: Math.round(avgRevenue - avgCosts),
+          totalHistoricalRevenue: historicalData.reduce((sum, item) => sum + item.revenue, 0),
+          totalProjectedRevenue: projectedData.reduce((sum, item) => sum + item.revenue, 0)
+        }
+      });
+    });
+  });
+}
 
 // Stripe Checkout API Endpoints
 

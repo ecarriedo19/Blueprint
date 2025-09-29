@@ -8,6 +8,7 @@ import ProjectsPage from './ProjectsPage';
 import QuotesPage from './QuotesPage';
 import ViewQuotePage from './ViewQuotePage.tsx';
 import AiCopilotPage from './AiCopilotPage';
+import ReportsPage from './ReportsPage';
 import IntegrationsPage from './IntegrationsPage';
 import SettingsPage from './SettingsPage';
 import VendorsDataPage from './VendorsDataPage';
@@ -44,6 +45,7 @@ const DashboardLayout = ({ companyName, updateCompanyName, currentUser, onLogout
           <Route path="/quotes" element={<QuotesPage currentUser={currentUser} />} />
           <Route path="/quotes/:id" element={<ViewQuotePage currentUser={currentUser} />} />
           <Route path="/ai-copilot" element={<AiCopilotPage />} />
+          <Route path="/reports" element={<ReportsPage />} />
           <Route path="/integrations" element={<IntegrationsPage />} />
           <Route path="/vendors" element={<VendorsDataPage />} />
           <Route path="/settings" element={
