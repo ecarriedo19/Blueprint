@@ -1,13 +1,21 @@
-import { useState, useCallback } from 'react';
-import PageHeader from './PageHeader';
+import { useState, useCallback, useEffect } from 'react';
 import Card from './Card';
 import Button from './Button';
 import ThemeToggle from './ThemeToggle';
-import { Building2, CreditCard, Users2, Link, Shield, ChevronRight, Palette, Mail, Trash2, UserCheck, AlertCircle } from 'lucide-react';
+import { Building2, CreditCard, Users2, Link, Shield, ChevronRight, Palette, Mail, Trash2, UserCheck, AlertCircle, Upload, X, Settings } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useApp } from '../contexts/AppContext';
 import { useTeamMembers } from '../utils/queries';
 import { useTeamMutations } from '../contexts/TeamMutations';
+import ProjectAccessModal from './ProjectAccessModal';
+
+// Helper function to construct absolute URLs for images
+const getAbsoluteImageUrl = (relativePath: string | null): string | null => {
+  if (!relativePath) return null;
+  if (relativePath.startsWith('http')) return relativePath; // Already absolute
+  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+  return `${apiBaseUrl}${relativePath}`;
+};
 
 // Define the navigation items
 const navItems = [
@@ -59,6 +67,8 @@ const TeamManagementContent = () => {
   const [inviting, setInviting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [isProjectAccessModalOpen, setIsProjectAccessModalOpen] = useState(false);
+  const [selectedUserForProjects, setSelectedUserForProjects] = useState(null);
   const { showConfirmationModal } = useApp();
 
   // Use React Query for data fetching
@@ -124,7 +134,26 @@ const TeamManagementContent = () => {
     });
   };
 
+  // Handle project access modal
+  const handleManageProjectAccess = (user) => {
+    setSelectedUserForProjects(user);
+    setIsProjectAccessModalOpen(true);
+  };
 
+  const handleCloseProjectAccessModal = () => {
+    setIsProjectAccessModalOpen(false);
+    setSelectedUserForProjects(null);
+  };
+
+  const handleProjectAccessSuccess = (message, type = 'success') => {
+    if (type === 'success') {
+      setSuccess(message);
+      setError('');
+    } else {
+      setError(message);
+      setSuccess('');
+    }
+  };
 
   return (
     <div className="space-y-8">
@@ -266,7 +295,7 @@ const TeamManagementContent = () => {
                         <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
                           {member.profilePictureUrl ? (
                             <img 
-                              src={member.profilePictureUrl} 
+                              src={getAbsoluteImageUrl(member.profilePictureUrl) || ''} 
                               alt={member.name}
                               className="w-10 h-10 rounded-full object-cover"
                             />
@@ -298,14 +327,25 @@ const TeamManagementContent = () => {
                       {new Date(member.created_at).toLocaleDateString()}
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <button
-                        onClick={() => handleDeleteUser(member.id, member.name)}
-                        className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg 
-                                  transition-colors duration-200"
-                        title="Remove team member"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => handleManageProjectAccess(member)}
+                          className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-blue-400 
+                                    hover:text-blue-300 hover:bg-blue-500/10 rounded-lg transition-colors duration-200"
+                          title="Manage project access"
+                        >
+                          <Settings className="w-3 h-3" />
+                          Manage Projects
+                        </button>
+                        <button
+                          onClick={() => handleDeleteUser(member.id, member.name)}
+                          className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg 
+                                    transition-colors duration-200"
+                          title="Remove team member"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -314,6 +354,14 @@ const TeamManagementContent = () => {
           </div>
         )}
       </div>
+
+      {/* Project Access Modal */}
+      <ProjectAccessModal
+        isOpen={isProjectAccessModalOpen}
+        onClose={handleCloseProjectAccessModal}
+        selectedUser={selectedUserForProjects}
+        onSuccess={handleProjectAccessSuccess}
+      />
     </div>
   );
 };
@@ -336,7 +384,113 @@ const SettingsPage = ({ companyName, updateCompanyName, currentUser }: SettingsP
   const [newCompanyName, setNewCompanyName] = useState(companyName);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [logoError, setLogoError] = useState('');
+  const [logoSuccess, setLogoSuccess] = useState('');
   const { theme } = useTheme();
+
+  // Fetch company profile data (including logo) on component mount
+  useEffect(() => {
+    const fetchCompanyProfile = async () => {
+      try {
+        const response = await fetch('/api/company-profile', {
+          credentials: 'include'
+        });
+        const data = await response.json();
+        if (response.ok) {
+          setLogoUrl(data.logo_url);
+        }
+      } catch (error) {
+        console.error('Error fetching company profile:', error);
+      }
+    };
+    
+    fetchCompanyProfile();
+  }, []);
+
+  // Handle logo file upload
+  const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      setLogoError('Please select an image file');
+      return;
+    }
+
+    // Validate file size (5MB limit)
+    if (file.size > 5 * 1024 * 1024) {
+      setLogoError('Image file must be smaller than 5MB');
+      return;
+    }
+
+    setIsUploadingLogo(true);
+    setLogoError('');
+    setLogoSuccess('');
+
+    try {
+      const formData = new FormData();
+      formData.append('logo', file);
+
+      const response = await fetch('/api/company-profile/logo', {
+        method: 'POST',
+        credentials: 'include',
+        body: formData
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.success) {
+        setLogoUrl(result.logo_url);
+        setLogoSuccess(logoUrl ? 'Company logo updated successfully!' : 'Company logo uploaded successfully!');
+        // Clear success message after 3 seconds
+        setTimeout(() => setLogoSuccess(''), 3000);
+      } else {
+        setLogoError(result.error || 'Failed to upload logo');
+      }
+    } catch (error) {
+      console.error('Error uploading logo:', error);
+      setLogoError('Failed to upload logo. Please try again.');
+    } finally {
+      setIsUploadingLogo(false);
+      // Reset the file input
+      if (event.target) {
+        event.target.value = '';
+      }
+    }
+  };
+
+  // Handle logo removal
+  const handleLogoRemove = async () => {
+    setIsUploadingLogo(true);
+    setLogoError('');
+    setLogoSuccess('');
+
+    try {
+      const response = await fetch('/api/company-profile/logo', {
+        method: 'DELETE',
+        credentials: 'include'
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.success) {
+        setLogoUrl(null);
+        setLogoSuccess('Company logo removed successfully!');
+        // Clear success message after 3 seconds
+        setTimeout(() => setLogoSuccess(''), 3000);
+      } else {
+        setLogoError(result.error || 'Failed to remove logo');
+      }
+    } catch (error) {
+      console.error('Error removing logo:', error);
+      setLogoError('Failed to remove logo. Please try again.');
+    } finally {
+      setIsUploadingLogo(false);
+    }
+  };
 
   // Role-based permission check
   const isAdmin = () => {
@@ -384,38 +538,123 @@ const SettingsPage = ({ companyName, updateCompanyName, currentUser }: SettingsP
         content: (
           <div className="space-y-6">
             {isAdmin() ? (
-              <div className="space-y-2">
-                <label htmlFor="companyName" className="block text-sm font-medium text-gray-700 dark:text-slate-300">
-                  Company Name
-                </label>
+              <div className="space-y-6">
+                {/* Company Name Section */}
                 <div className="space-y-2">
-                  <input
-                    type="text"
-                    id="companyName"
-                    value={newCompanyName}
-                    onChange={(e) => {
-                      setNewCompanyName(e.target.value);
-                      setError(''); // Clear error when user types
-                    }}
-                    disabled={isSaving}
-                    className={`w-full px-4 py-2 bg-gray-100/50 dark:bg-slate-800/50 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-white transition-colors
-                      ${error ? 'border-red-500/50' : 'border-gray-300/50 dark:border-slate-700/50'}
-                      ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    placeholder="Enter company name"
-                  />
-                  {error && (
-                    <p className="text-sm text-red-400">{error}</p>
-                  )}
+                  <label htmlFor="companyName" className="block text-sm font-medium text-gray-700 dark:text-slate-300">
+                    Company Name
+                  </label>
+                  <div className="space-y-2">
+                    <input
+                      type="text"
+                      id="companyName"
+                      value={newCompanyName}
+                      onChange={(e) => {
+                        setNewCompanyName(e.target.value);
+                        setError(''); // Clear error when user types
+                      }}
+                      disabled={isSaving}
+                      className={`w-full px-4 py-2 bg-gray-100/50 dark:bg-slate-800/50 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-white transition-colors
+                        ${error ? 'border-red-500/50' : 'border-gray-300/50 dark:border-slate-700/50'}
+                        ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      placeholder="Enter company name"
+                    />
+                    {error && (
+                      <p className="text-sm text-red-400">{error}</p>
+                    )}
+                  </div>
+                  <div className="mt-4">
+                    <Button
+                      variant="primary"
+                      onClick={handleSave}
+                      loading={isSaving}
+                      disabled={isSaving || !newCompanyName.trim() || newCompanyName.trim() === companyName}
+                    >
+                      {isSaving ? 'Saving...' : 'Save Changes'}
+                    </Button>
+                  </div>
                 </div>
-                <div className="mt-4">
-                  <Button
-                    variant="primary"
-                    onClick={handleSave}
-                    loading={isSaving}
-                    disabled={isSaving || !newCompanyName.trim() || newCompanyName.trim() === companyName}
-                  >
-                    {isSaving ? 'Saving...' : 'Save Changes'}
-                  </Button>
+
+                {/* Company Logo Section */}
+                <div className="pt-6 border-t border-gray-200/50 dark:border-slate-700/50">
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">
+                        Company Logo
+                      </label>
+                      <p className="text-sm text-gray-600 dark:text-slate-400 mb-4">
+                        Upload your company logo to appear on generated PDF reports. Supported formats: JPEG, PNG, GIF, WebP (max 5MB).
+                      </p>
+                    </div>
+
+                    {/* Current Logo Display */}
+                    {logoUrl && (
+                      <div className="mb-4">
+                        <p className="text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">Current Logo:</p>
+                        <div className="w-20 h-20 border border-gray-300/50 dark:border-slate-600/50 rounded-lg overflow-hidden bg-gray-50 dark:bg-slate-800/50 flex items-center justify-center">
+                          <img 
+                            src={getAbsoluteImageUrl(logoUrl) || ''} 
+                            alt="Company Logo" 
+                            className="max-w-full max-h-full object-contain"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Logo Status Messages */}
+                    {logoError && (
+                      <div className="p-3 bg-red-50/50 dark:bg-red-900/20 border border-red-200/50 dark:border-red-700/50 rounded-lg">
+                        <p className="text-sm text-red-600 dark:text-red-400">{logoError}</p>
+                      </div>
+                    )}
+
+                    {logoSuccess && (
+                      <div className="p-3 bg-green-50/50 dark:bg-green-900/20 border border-green-200/50 dark:border-green-700/50 rounded-lg">
+                        <p className="text-sm text-green-600 dark:text-green-400">{logoSuccess}</p>
+                      </div>
+                    )}
+
+                    {/* Upload/Remove Buttons */}
+                    <div className="flex items-center gap-3">
+                      <input
+                        id="logo-upload"
+                        type="file"
+                        accept="image/*"
+                        onChange={handleLogoUpload}
+                        className="hidden"
+                      />
+                      <label htmlFor="logo-upload" className="cursor-pointer inline-block">
+                        <Button
+                          variant="outline"
+                          loading={isUploadingLogo}
+                          disabled={isUploadingLogo}
+                          className="relative pointer-events-none"
+                        >
+                          <Upload className="w-4 h-4 mr-2" />
+                          {isUploadingLogo ? 'Processing...' : (logoUrl ? 'Replace Logo' : 'Upload Logo')}
+                        </Button>
+                      </label>
+                      
+                      {logoUrl && (
+                        <Button
+                          variant="outline"
+                          onClick={handleLogoRemove}
+                          loading={isUploadingLogo}
+                          disabled={isUploadingLogo}
+                          className="text-red-500 hover:text-red-600 border-red-500/30 hover:border-red-500/50"
+                        >
+                          <X className="w-4 h-4 mr-2" />
+                          Remove Logo
+                        </Button>
+                      )}
+                    </div>
+
+                    <div className="p-3 bg-blue-50/50 dark:bg-blue-900/20 border border-blue-200/50 dark:border-blue-700/50 rounded-lg">
+                      <p className="text-sm text-blue-600 dark:text-blue-400">
+                        💡 Your logo will automatically appear on all generated PDF reports, giving them a professional, branded appearance.
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </div>
             ) : (
@@ -524,13 +763,7 @@ const SettingsPage = ({ companyName, updateCompanyName, currentUser }: SettingsP
   };
 
   return (
-    <div className="space-y-6">
-      <PageHeader 
-        title="Settings" 
-        subtitle="Manage your company profile, billing, and team members."
-        size="lg"
-      />
-      
+    <div className="space-y-6">      
       <div className="grid grid-cols-1 md:grid-cols-[300px_1fr] gap-6">
         {/* Navigation Sidebar */}
         <Card variant="glass" className="h-fit" padding="sm" hover={false}>

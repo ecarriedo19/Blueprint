@@ -8,14 +8,17 @@ const { createClient } = require('@supabase/supabase-js');
 const { pipeline } = require('@xenova/transformers');
 const puppeteer = require('puppeteer');
 const fs = require('fs').promises;
+const fsSync = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const https = require('https');
 const { Resend } = require('resend');
 const multer = require('multer');
 const pdfParse = require('pdf-parse');
 const WebSocket = require('ws');
 const http = require('http');
 const Stripe = require('stripe');
+const juice = require('juice');
 require('dotenv').config();
 
 const app = express();
@@ -29,6 +32,57 @@ const wss = new WebSocket.Server({ server });
 
 // Map to store active WebSocket connections by user ID
 const activeConnections = new Map();
+
+// Helper function to download and save user avatar
+async function downloadAndSaveAvatar(avatarUrl, userId) {
+  if (!avatarUrl || !avatarUrl.startsWith('http')) {
+    console.log('No valid avatar URL provided for user:', userId);
+    return null;
+  }
+
+  try {
+    const extension = '.jpg'; // Default to jpg for Google avatars
+    const filename = `user_${userId}${extension}`;
+    const localPath = path.join(__dirname, 'uploads', 'avatars', filename);
+    const publicUrl = `/uploads/avatars/${filename}`;
+
+    console.log('📥 Downloading avatar for user', userId, 'from:', avatarUrl);
+
+    return new Promise((resolve, reject) => {
+      const file = fsSync.createWriteStream(localPath);
+      
+      https.get(avatarUrl, (response) => {
+        if (response.statusCode !== 200) {
+          console.error('Failed to download avatar, status:', response.statusCode);
+          resolve(null);
+          return;
+        }
+
+        response.pipe(file);
+
+        file.on('finish', () => {
+          file.close();
+          console.log('✅ Avatar saved successfully:', publicUrl);
+          resolve(publicUrl);
+        });
+
+        file.on('error', (err) => {
+          console.error('Error saving avatar file:', err);
+          fsSync.unlink(localPath, () => {}); // Delete the file on error
+          resolve(null);
+        });
+
+      }).on('error', (err) => {
+        console.error('Error downloading avatar:', err);
+        resolve(null);
+      });
+    });
+
+  } catch (error) {
+    console.error('Error in downloadAndSaveAvatar:', error);
+    return null;
+  }
+}
 
 // Initialize Resend client for email sending
 let resend = null;
@@ -59,6 +113,41 @@ const upload = multer({
       cb(null, true);
     } else {
       cb(new Error('Only text files (.txt, .md, .csv, .json) and PDF files (.pdf) are supported for AI analysis'));
+    }
+  }
+});
+
+// Configure multer for logo uploads (disk storage)
+const logoUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      cb(null, 'uploads/logos');
+    },
+    filename: (req, file, cb) => {
+      // Generate unique filename: userId_timestamp.extension
+      const userId = req.session.userId;
+      const timestamp = Date.now();
+      const extension = path.extname(file.originalname);
+      cb(null, `${userId}_${timestamp}${extension}`);
+    }
+  }),
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit for images
+  },
+  fileFilter: (req, file, cb) => {
+    // Accept only image files
+    const allowedTypes = [
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'image/gif',
+      'image/webp'
+    ];
+    
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files (JPEG, PNG, GIF, WebP) are supported'));
     }
   }
 });
@@ -106,6 +195,9 @@ app.use(cors({
   credentials: true
 }));
 app.use(express.json());
+
+// Serve static files from uploads directory
+app.use('/uploads', express.static('uploads'));
 
 // Add security headers that work with Firebase auth and Stripe
 app.use((req, res, next) => {
@@ -282,6 +374,36 @@ db.serialize(() => {
       });
     } else {
       console.log('✅ subscriptionStatus column already exists in users table');
+    }
+  });
+
+  // Migration: Add hasCompletedOnboarding column to existing users table if it doesn't exist
+  db.all("PRAGMA table_info(users)", (err, columns) => {
+    if (err) {
+      console.error('Error checking users table schema:', err);
+      return;
+    }
+
+    const hasOnboardingFlag = columns.some(col => col.name === 'hasCompletedOnboarding');
+
+    if (!hasOnboardingFlag) {
+      db.run('ALTER TABLE users ADD COLUMN hasCompletedOnboarding BOOLEAN DEFAULT 0', (err) => {
+        if (err) {
+          console.error('Error adding hasCompletedOnboarding column:', err);
+        } else {
+          console.log('✅ Added hasCompletedOnboarding column to users table');
+          // Update existing users with default onboarding status (false)
+          db.run('UPDATE users SET hasCompletedOnboarding = 0 WHERE hasCompletedOnboarding IS NULL', (err) => {
+            if (err) {
+              console.error('Error updating existing users with default onboarding status:', err);
+            } else {
+              console.log('✅ Updated existing users with default onboarding status');
+            }
+          });
+        }
+      });
+    } else {
+      console.log('✅ hasCompletedOnboarding column already exists in users table');
     }
   });
 
@@ -489,6 +611,38 @@ db.serialize(() => {
     }
   });
 
+  // Migration: Add logo_url column to company_profile table if it doesn't exist
+  db.all("PRAGMA table_info(company_profile)", (err, columns) => {
+    if (err) {
+      console.error('Error checking company_profile table info:', err);
+      return;
+    }
+    
+    const hasLogoUrl = columns.some(col => col.name === 'logo_url');
+    if (!hasLogoUrl) {
+      db.run(`ALTER TABLE company_profile ADD COLUMN logo_url TEXT`, (err) => {
+        if (err) {
+          console.error('Error adding logo_url column to company_profile:', err);
+        } else {
+          console.log('✅ Added logo_url column to company_profile table');
+        }
+      });
+    } else {
+      console.log('✅ logo_url column already exists in company_profile table');
+    }
+  });
+
+  // Create project_members join table for granular project access control
+  db.run(`CREATE TABLE IF NOT EXISTS project_members (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    projectId INTEGER NOT NULL,
+    userId INTEGER NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(projectId, userId),
+    FOREIGN KEY (projectId) REFERENCES projects (id) ON DELETE CASCADE,
+    FOREIGN KEY (userId) REFERENCES users (id) ON DELETE CASCADE
+  )`);
+
   console.log('Database tables created/updated successfully');
 });
 
@@ -636,10 +790,167 @@ const checkPermission = (allowedRoles) => {
   };
 };
 
+// Enhanced permission middleware with granular project access control
+const checkProjectAccess = (allowedRoles = ['Admin', 'Member']) => {
+  return (req, res, next) => {
+    if (!req.session.userId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    // Get the user's role from the database
+    db.get(
+      'SELECT role FROM users WHERE id = ?',
+      [req.session.userId],
+      (err, user) => {
+        if (err) {
+          console.error('Error checking user role:', err);
+          return res.status(500).json({ error: 'Internal server error' });
+        }
+
+        if (!user) {
+          return res.status(401).json({ error: 'User not found' });
+        }
+
+        const userRole = user.role || 'Member';
+
+        // Check if user's role is in the allowed roles
+        if (!allowedRoles.includes(userRole)) {
+          return res.status(403).json({ 
+            error: 'Insufficient permissions', 
+            required: allowedRoles,
+            current: userRole 
+          });
+        }
+
+        // Add user role to request object
+        req.userRole = userRole;
+
+        // If user is Admin, they have access to all projects
+        if (userRole === 'Admin') {
+          return next();
+        }
+
+        // For non-Admin users, check project-specific access
+        const projectId = req.params.projectId || req.params.id;
+        const quoteId = req.params.id || req.params.quoteId;
+        const itemId = req.params.itemId;
+        const changeOrderId = req.params.changeOrderId;
+
+        // Helper function to check project access
+        const checkAccess = (projectIdToCheck) => {
+          if (!projectIdToCheck) {
+            // If no project ID found, allow access (for endpoints that don't relate to specific projects)
+            return next();
+          }
+
+          db.get(
+            'SELECT 1 FROM project_members WHERE projectId = ? AND userId = ?',
+            [projectIdToCheck, req.session.userId],
+            (err, member) => {
+              if (err) {
+                console.error('Error checking project access:', err);
+                return res.status(500).json({ error: 'Internal server error' });
+              }
+
+              if (!member) {
+                return res.status(403).json({ 
+                  error: 'Access denied: You are not assigned to this project',
+                  projectId: projectIdToCheck
+                });
+              }
+
+              next();
+            }
+          );
+        };
+
+        // Direct project access (e.g., /api/projects/:projectId)
+        if (projectId) {
+          return checkAccess(parseInt(projectId));
+        }
+
+        // Quote-based access - need to find the project through quotes
+        if (quoteId) {
+          db.get(
+            'SELECT p.id as projectId FROM quotes q JOIN projects p ON q.user_id = p.user_id WHERE q.id = ?',
+            [quoteId],
+            (err, result) => {
+              if (err) {
+                console.error('Error finding project for quote:', err);
+                return res.status(500).json({ error: 'Internal server error' });
+              }
+
+              if (!result) {
+                return res.status(404).json({ error: 'Quote not found' });
+              }
+
+              checkAccess(result.projectId);
+            }
+          );
+          return;
+        }
+
+        // Line item access - need to find project through quote
+        if (itemId) {
+          db.get(
+            `SELECT p.id as projectId 
+             FROM line_items li 
+             JOIN quotes q ON li.quoteId = q.id 
+             JOIN projects p ON q.user_id = p.user_id 
+             WHERE li.id = ?`,
+            [itemId],
+            (err, result) => {
+              if (err) {
+                console.error('Error finding project for line item:', err);
+                return res.status(500).json({ error: 'Internal server error' });
+              }
+
+              if (!result) {
+                return res.status(404).json({ error: 'Line item not found' });
+              }
+
+              checkAccess(result.projectId);
+            }
+          );
+          return;
+        }
+
+        // Change order access - need to find project through quote
+        if (changeOrderId) {
+          db.get(
+            `SELECT p.id as projectId 
+             FROM change_orders co 
+             JOIN quotes q ON co.quoteId = q.id 
+             JOIN projects p ON q.user_id = p.user_id 
+             WHERE co.id = ?`,
+            [changeOrderId],
+            (err, result) => {
+              if (err) {
+                console.error('Error finding project for change order:', err);
+                return res.status(500).json({ error: 'Internal server error' });
+              }
+
+              if (!result) {
+                return res.status(404).json({ error: 'Change order not found' });
+              }
+
+              checkAccess(result.projectId);
+            }
+          );
+          return;
+        }
+
+        // If no specific project context found, allow access
+        next();
+      }
+    );
+  };
+};
+
 // Get current user profile
 app.get('/api/me', requireAuth, (req, res) => {
   db.get(
-    'SELECT id, googleId, email, name, profilePictureUrl, provider, role FROM users WHERE id = ?',
+    'SELECT id, googleId, email, name, profilePictureUrl, provider, role, hasCompletedOnboarding FROM users WHERE id = ?',
     [req.session.userId],
     (err, user) => {
       if (err) return res.status(500).json({ error: err.message });
@@ -648,7 +959,29 @@ app.get('/api/me', requireAuth, (req, res) => {
       if (!user.role) {
         user.role = 'Member';
       }
+      // Ensure hasCompletedOnboarding has a default value
+      if (user.hasCompletedOnboarding === null || user.hasCompletedOnboarding === undefined) {
+        user.hasCompletedOnboarding = 0;
+      }
       res.json(user);
+    }
+  );
+});
+
+// Complete user onboarding
+app.post('/api/users/complete-onboarding', requireAuth, (req, res) => {
+  db.run(
+    'UPDATE users SET hasCompletedOnboarding = 1 WHERE id = ?',
+    [req.session.userId],
+    function(err) {
+      if (err) {
+        console.error('Error completing onboarding:', err);
+        return res.status(500).json({ error: err.message });
+      }
+      if (this.changes === 0) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      res.json({ success: true, message: 'Onboarding completed successfully' });
     }
   );
 });
@@ -676,35 +1009,41 @@ app.post('/api/users', (req, res) => {
       console.log('Existing user found:', existingUser);
       
       if (existingUser) {
-        // Update existing user
-        db.run(
-          'UPDATE users SET name = ?, email = ?, profilePictureUrl = ?, updated_at = CURRENT_TIMESTAMP WHERE googleId = ?',
-          [name, email, profilePictureUrl, googleId],
-          function(err) {
-            if (err) {
-              console.error('Database error updating user:', err);
-              return res.status(500).json({ error: err.message });
+        // Update existing user - download and save avatar if it's a Google URL
+        downloadAndSaveAvatar(profilePictureUrl, existingUser.id).then((localAvatarUrl) => {
+          const finalAvatarUrl = localAvatarUrl || profilePictureUrl;
+          
+          db.run(
+            'UPDATE users SET name = ?, email = ?, profilePictureUrl = ?, updated_at = CURRENT_TIMESTAMP WHERE googleId = ?',
+            [name, email, finalAvatarUrl, googleId],
+            function(err) {
+              if (err) {
+                console.error('Database error updating user:', err);
+                return res.status(500).json({ error: err.message });
+              }
+              
+              console.log('User updated successfully with avatar URL:', finalAvatarUrl);
+              // Set session
+              req.session.userId = existingUser.id;
+              res.json({ 
+                success: true, 
+                user: { 
+                  id: existingUser.id, 
+                  googleId, 
+                  email, 
+                  name, 
+                  profilePictureUrl: finalAvatarUrl,
+                  provider 
+                } 
+              });
             }
-            
-            console.log('User updated successfully');
-            // Set session
-            req.session.userId = existingUser.id;
-            res.json({ 
-              success: true, 
-              user: { 
-                id: existingUser.id, 
-                googleId, 
-                email, 
-                name, 
-                profilePictureUrl,
-                provider 
-              } 
-            });
-          }
-        );
+          );
+        });
       } else {
         // Create new user
         console.log('Creating new user...');
+        
+        // First create the user to get the ID, then download avatar
         db.run(
           'INSERT INTO users (googleId, email, name, profilePictureUrl, provider) VALUES (?, ?, ?, ?, ?)',
           [googleId, email, name, profilePictureUrl, provider],
@@ -717,28 +1056,45 @@ app.post('/api/users', (req, res) => {
             const newUserId = this.lastID;
             console.log('New user created with ID:', newUserId);
             
-            // Create default company profile for new user
-            db.run(
-              'INSERT INTO company_profile (id, company_name, user_id) VALUES (?, ?, ?)',
-              [`user_${newUserId}`, 'Company Co', newUserId],
-              (err) => {
-                if (err) console.error('Error creating company profile:', err);
-                else console.log('Company profile created for user:', newUserId);
+            // Download and save avatar for new user
+            downloadAndSaveAvatar(profilePictureUrl, newUserId).then((localAvatarUrl) => {
+              const finalAvatarUrl = localAvatarUrl || profilePictureUrl;
+              
+              // Update user with local avatar URL if download was successful
+              if (localAvatarUrl) {
+                db.run(
+                  'UPDATE users SET profilePictureUrl = ? WHERE id = ?',
+                  [finalAvatarUrl, newUserId],
+                  (err) => {
+                    if (err) console.error('Error updating user avatar URL:', err);
+                    else console.log('Avatar URL updated for new user:', newUserId);
+                  }
+                );
               }
-            );
-            
-            // Set session
-            req.session.userId = newUserId;
-            res.json({ 
-              success: true, 
-              user: { 
-                id: newUserId, 
-                googleId, 
-                email, 
-                name, 
-                profilePictureUrl,
-                provider 
-              } 
+              
+              // Create default company profile for new user
+              db.run(
+                'INSERT INTO company_profile (id, company_name, user_id) VALUES (?, ?, ?)',
+                [`user_${newUserId}`, 'Company Co', newUserId],
+                (err) => {
+                  if (err) console.error('Error creating company profile:', err);
+                  else console.log('Company profile created for user:', newUserId);
+                }
+              );
+              
+              // Set session
+              req.session.userId = newUserId;
+              res.json({ 
+                success: true, 
+                user: { 
+                  id: newUserId, 
+                  googleId, 
+                  email, 
+                  name, 
+                  profilePictureUrl: finalAvatarUrl,
+                  provider 
+                } 
+              });
             });
           }
         );
@@ -758,7 +1114,7 @@ app.post('/api/logout', (req, res) => {
 // Get company profile
 app.get('/api/company-profile', requireAuth, (req, res) => {
   db.get(
-    'SELECT company_name FROM company_profile WHERE user_id = ?', 
+    'SELECT company_name, logo_url FROM company_profile WHERE user_id = ?', 
     [req.session.userId], 
     (err, row) => {
       if (err) return res.status(500).json({ error: err.message });
@@ -769,11 +1125,14 @@ app.get('/api/company-profile', requireAuth, (req, res) => {
           [`user_${req.session.userId}`, 'Company Co', req.session.userId],
           function(err) {
             if (err) return res.status(500).json({ error: err.message });
-            res.json({ company_name: 'Company Co' });
+            res.json({ company_name: 'Company Co', logo_url: null });
           }
         );
       } else {
-        res.json({ company_name: row.company_name });
+        res.json({ 
+          company_name: row.company_name,
+          logo_url: row.logo_url 
+        });
       }
     }
   );
@@ -802,6 +1161,155 @@ app.post('/api/company-profile', checkPermission(['Admin']), (req, res) => {
       } else {
         res.json({ success: true, company_name });
       }
+    }
+  );
+});
+
+// Upload company logo (Admin only)
+app.post('/api/company-profile/logo', checkPermission(['Admin']), logoUpload.single('logo'), (req, res) => {
+  console.log('📤 POST /api/company-profile/logo - Logo upload request from user:', req.session.userId);
+  
+  if (!req.file) {
+    console.error('❌ No file uploaded');
+    return res.status(400).json({ error: 'No logo file provided' });
+  }
+
+  const userId = req.session.userId;
+  const logoUrl = `/uploads/logos/${req.file.filename}`;
+  
+  console.log('📸 Logo uploaded:', req.file.filename, 'Size:', req.file.size, 'bytes');
+
+  // Update the company profile with the new logo URL
+  db.run(
+    'UPDATE company_profile SET logo_url = ? WHERE user_id = ?',
+    [logoUrl, userId],
+    function(err) {
+      if (err) {
+        console.error('❌ Error updating logo_url in database:', err);
+        return res.status(500).json({ error: err.message });
+      }
+      
+      if (this.changes === 0) {
+        // Create company profile if it doesn't exist
+        db.run(
+          'INSERT INTO company_profile (id, company_name, logo_url, user_id) VALUES (?, ?, ?, ?)',
+          [`user_${userId}`, 'Company Co', logoUrl, userId],
+          function(err) {
+            if (err) {
+              console.error('❌ Error creating company profile with logo:', err);
+              return res.status(500).json({ error: err.message });
+            }
+            console.log('✅ Company profile created with logo for user:', userId);
+            res.json({ success: true, logo_url: logoUrl });
+          }
+        );
+      } else {
+        console.log('✅ Logo updated successfully for user:', userId);
+        res.json({ success: true, logo_url: logoUrl });
+      }
+    }
+  );
+});
+
+// Manual avatar download endpoint (for testing/fixing existing users)
+app.post('/api/user/download-avatar', requireAuth, async (req, res) => {
+  const userId = req.session.userId;
+  
+  console.log('🔄 Manual avatar download request for user:', userId);
+  
+  // Get current user data
+  db.get(
+    'SELECT profilePictureUrl FROM users WHERE id = ?',
+    [userId],
+    async (err, user) => {
+      if (err) {
+        console.error('Error fetching user:', err);
+        return res.status(500).json({ error: err.message });
+      }
+      
+      if (!user || !user.profilePictureUrl) {
+        return res.status(400).json({ error: 'No profile picture URL found' });
+      }
+      
+      // Download and save avatar
+      try {
+        const localAvatarUrl = await downloadAndSaveAvatar(user.profilePictureUrl, userId);
+        
+        if (localAvatarUrl) {
+          // Update database with local URL
+          db.run(
+            'UPDATE users SET profilePictureUrl = ? WHERE id = ?',
+            [localAvatarUrl, userId],
+            function(err) {
+              if (err) {
+                console.error('Error updating avatar URL:', err);
+                return res.status(500).json({ error: err.message });
+              }
+              
+              console.log('✅ Avatar downloaded and updated for user:', userId);
+              res.json({ 
+                success: true, 
+                message: 'Avatar downloaded successfully',
+                avatar_url: localAvatarUrl
+              });
+            }
+          );
+        } else {
+          res.status(500).json({ error: 'Failed to download avatar' });
+        }
+      } catch (error) {
+        console.error('Error in manual avatar download:', error);
+        res.status(500).json({ error: 'Avatar download failed' });
+      }
+    }
+  );
+});
+
+// Remove company logo (Admin only)
+app.delete('/api/company-profile/logo', checkPermission(['Admin']), (req, res) => {
+  console.log('🗑️ DELETE /api/company-profile/logo - Logo removal request from user:', req.session.userId);
+  
+  const userId = req.session.userId;
+
+  // Get current logo URL first to delete the file
+  db.get(
+    'SELECT logo_url FROM company_profile WHERE user_id = ?',
+    [userId],
+    (err, row) => {
+      if (err) {
+        console.error('❌ Error fetching current logo:', err);
+        return res.status(500).json({ error: err.message });
+      }
+
+      // Update database to remove logo URL
+      db.run(
+        'UPDATE company_profile SET logo_url = NULL WHERE user_id = ?',
+        [userId],
+        function(err) {
+          if (err) {
+            console.error('❌ Error removing logo_url from database:', err);
+            return res.status(500).json({ error: err.message });
+          }
+
+          // Delete the physical file if it exists
+          if (row && row.logo_url) {
+            const fs = require('fs');
+            const logoPath = path.join(__dirname, row.logo_url.replace(/^\//, ''));
+            
+            fs.unlink(logoPath, (unlinkErr) => {
+              if (unlinkErr) {
+                console.warn('⚠️ Warning: Could not delete logo file:', unlinkErr.message);
+                // Don't fail the request if file deletion fails
+              } else {
+                console.log('🗑️ Logo file deleted:', logoPath);
+              }
+            });
+          }
+
+          console.log('✅ Logo removed successfully for user:', userId);
+          res.json({ success: true, message: 'Logo removed successfully' });
+        }
+      );
     }
   );
 });
@@ -1350,7 +1858,7 @@ app.post('/api/projects', checkPermission(['Admin', 'Member']), (req, res) => {
 });
 
 // Update project status (useful for AI actions)
-app.patch('/api/projects/:projectId', checkPermission(['Admin', 'Member']), (req, res) => {
+app.patch('/api/projects/:projectId', checkProjectAccess(['Admin', 'Member']), (req, res) => {
   const userId = req.session.userId;
   const { projectId } = req.params;
   const { status, budget, description, priority, name } = req.body;
@@ -1445,6 +1953,321 @@ app.patch('/api/projects/:projectId', checkPermission(['Admin', 'Member']), (req
             success: true, 
             message: 'Project updated successfully',
             project: updatedProject
+          });
+        }
+      );
+    }
+  );
+});
+
+// Project Members API Endpoints (Granular Access Control)
+
+// Assign a user to a project (Admin only)
+app.post('/api/projects/:projectId/members', checkPermission(['Admin']), (req, res) => {
+  const projectId = parseInt(req.params.projectId);
+  const { userId } = req.body;
+  const adminUserId = req.session.userId;
+
+  console.log(`🔍 POST /api/projects/${projectId}/members - Assigning user ${userId} to project`);
+
+  // Validate input
+  if (!userId || !Number.isInteger(parseInt(userId))) {
+    return res.status(400).json({ error: 'Valid userId is required' });
+  }
+
+  if (!Number.isInteger(projectId)) {
+    return res.status(400).json({ error: 'Valid projectId is required' });
+  }
+
+  // First, verify the project exists and belongs to the admin's organization
+  db.get(
+    'SELECT id, name FROM projects WHERE id = ? AND user_id = ?',
+    [projectId, adminUserId],
+    (err, project) => {
+      if (err) {
+        console.error('Error checking project:', err);
+        return res.status(500).json({ error: err.message });
+      }
+
+      if (!project) {
+        return res.status(404).json({ error: 'Project not found or access denied' });
+      }
+
+      // Then verify the user exists and belongs to the same organization (admin's team)
+      db.get(
+        'SELECT id, name, email FROM users WHERE id = ?',
+        [userId],
+        (err, user) => {
+          if (err) {
+            console.error('Error checking user:', err);
+            return res.status(500).json({ error: err.message });
+          }
+
+          if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+          }
+
+          // Insert the project member relationship (ignore if already exists due to UNIQUE constraint)
+          db.run(
+            'INSERT OR IGNORE INTO project_members (projectId, userId) VALUES (?, ?)',
+            [projectId, userId],
+            function(err) {
+              if (err) {
+                console.error('Error assigning user to project:', err);
+                return res.status(500).json({ error: err.message });
+              }
+
+              if (this.changes > 0) {
+                console.log(`✅ User ${userId} (${user.name}) assigned to project ${projectId} (${project.name})`);
+                
+                // Create notification for the assigned user
+                createNotification(userId, `You have been assigned to project: ${project.name}`);
+                
+                res.json({ 
+                  success: true, 
+                  message: `${user.name} has been assigned to ${project.name}`,
+                  assignment: {
+                    projectId,
+                    userId,
+                    projectName: project.name,
+                    userName: user.name,
+                    userEmail: user.email
+                  }
+                });
+              } else {
+                res.json({ 
+                  success: true, 
+                  message: `${user.name} is already assigned to ${project.name}`,
+                  assignment: {
+                    projectId,
+                    userId,
+                    projectName: project.name,
+                    userName: user.name,
+                    userEmail: user.email
+                  }
+                });
+              }
+            }
+          );
+        }
+      );
+    }
+  );
+});
+
+// Remove a user from a project (Admin only)
+app.delete('/api/projects/:projectId/members/:userId', checkPermission(['Admin']), (req, res) => {
+  const projectId = parseInt(req.params.projectId);
+  const userId = parseInt(req.params.userId);
+  const adminUserId = req.session.userId;
+
+  console.log(`🔍 DELETE /api/projects/${projectId}/members/${userId} - Removing user from project`);
+
+  // Validate input
+  if (!Number.isInteger(projectId) || !Number.isInteger(userId)) {
+    return res.status(400).json({ error: 'Valid projectId and userId are required' });
+  }
+
+  // First, verify the project exists and belongs to the admin's organization
+  db.get(
+    'SELECT id, name FROM projects WHERE id = ? AND user_id = ?',
+    [projectId, adminUserId],
+    (err, project) => {
+      if (err) {
+        console.error('Error checking project:', err);
+        return res.status(500).json({ error: err.message });
+      }
+
+      if (!project) {
+        return res.status(404).json({ error: 'Project not found or access denied' });
+      }
+
+      // Get user info for the response
+      db.get(
+        'SELECT id, name, email FROM users WHERE id = ?',
+        [userId],
+        (err, user) => {
+          if (err) {
+            console.error('Error checking user:', err);
+            return res.status(500).json({ error: err.message });
+          }
+
+          if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+          }
+
+          // Remove the project member relationship
+          db.run(
+            'DELETE FROM project_members WHERE projectId = ? AND userId = ?',
+            [projectId, userId],
+            function(err) {
+              if (err) {
+                console.error('Error removing user from project:', err);
+                return res.status(500).json({ error: err.message });
+              }
+
+              if (this.changes > 0) {
+                console.log(`✅ User ${userId} (${user.name}) removed from project ${projectId} (${project.name})`);
+                
+                // Create notification for the removed user
+                createNotification(userId, `You have been removed from project: ${project.name}`);
+                
+                res.json({ 
+                  success: true, 
+                  message: `${user.name} has been removed from ${project.name}`,
+                  removal: {
+                    projectId,
+                    userId,
+                    projectName: project.name,
+                    userName: user.name,
+                    userEmail: user.email
+                  }
+                });
+              } else {
+                res.json({ 
+                  success: true, 
+                  message: `${user.name} was not assigned to ${project.name}`,
+                  removal: {
+                    projectId,
+                    userId,
+                    projectName: project.name,
+                    userName: user.name,
+                    userEmail: user.email
+                  }
+                });
+              }
+            }
+          );
+        }
+      );
+    }
+  );
+});
+
+// Get project members for a specific project (Admin only)
+app.get('/api/projects/:projectId/members', checkPermission(['Admin']), (req, res) => {
+  const projectId = parseInt(req.params.projectId);
+  const adminUserId = req.session.userId;
+
+  console.log(`🔍 GET /api/projects/${projectId}/members - Fetching project members`);
+
+  if (!Number.isInteger(projectId)) {
+    return res.status(400).json({ error: 'Valid projectId is required' });
+  }
+
+  // First, verify the project exists and belongs to the admin's organization
+  db.get(
+    'SELECT id, name FROM projects WHERE id = ? AND user_id = ?',
+    [projectId, adminUserId],
+    (err, project) => {
+      if (err) {
+        console.error('Error checking project:', err);
+        return res.status(500).json({ error: err.message });
+      }
+
+      if (!project) {
+        return res.status(404).json({ error: 'Project not found or access denied' });
+      }
+
+      // Get all members assigned to this project
+      db.all(
+        `SELECT u.id, u.name, u.email, u.role, pm.created_at as assigned_at
+         FROM project_members pm
+         JOIN users u ON pm.userId = u.id
+         WHERE pm.projectId = ?
+         ORDER BY u.name`,
+        [projectId],
+        (err, members) => {
+          if (err) {
+            console.error('Error fetching project members:', err);
+            return res.status(500).json({ error: err.message });
+          }
+
+          console.log(`✅ Found ${members.length} members for project ${projectId}`);
+          res.json({
+            success: true,
+            project: {
+              id: project.id,
+              name: project.name
+            },
+            members: members || []
+          });
+        }
+      );
+    }
+  );
+});
+
+// Get user's project assignments (for a specific user)
+app.get('/api/users/:userId/projects', checkPermission(['Admin']), (req, res) => {
+  const userId = parseInt(req.params.userId);
+  const adminUserId = req.session.userId;
+
+  console.log(`🔍 GET /api/users/${userId}/projects - Fetching user's project assignments`);
+
+  if (!Number.isInteger(userId)) {
+    return res.status(400).json({ error: 'Valid userId is required' });
+  }
+
+  // Verify the user exists
+  db.get(
+    'SELECT id, name, email FROM users WHERE id = ?',
+    [userId],
+    (err, user) => {
+      if (err) {
+        console.error('Error checking user:', err);
+        return res.status(500).json({ error: err.message });
+      }
+
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      // Get all projects this user is assigned to (only from admin's organization)
+      db.all(
+        `SELECT p.id, p.name, p.status, p.description, pm.created_at as assigned_at
+         FROM project_members pm
+         JOIN projects p ON pm.projectId = p.id
+         WHERE pm.userId = ? AND p.user_id = ?
+         ORDER BY p.name`,
+        [userId, adminUserId],
+        (err, projects) => {
+          if (err) {
+            console.error('Error fetching user projects:', err);
+            return res.status(500).json({ error: err.message });
+          }
+
+          // Format projects to extract priority from description (similar to main projects endpoint)
+          const formattedProjects = projects.map(project => {
+            let description = project.description || '';
+            let priority = 'medium'; // default
+            
+            // Extract priority from description if it exists
+            const priorityMatch = description.match(/\[Priority: (low|medium|high|urgent)\]/);
+            if (priorityMatch) {
+              priority = priorityMatch[1];
+              description = description.replace(/\s*\[Priority: (low|medium|high|urgent)\]/, '').trim();
+            }
+            
+            return {
+              id: project.id,
+              name: project.name,
+              status: project.status,
+              priority: priority,
+              description: description,
+              assigned_at: project.assigned_at
+            };
+          });
+
+          console.log(`✅ Found ${formattedProjects.length} project assignments for user ${userId}`);
+          res.json({
+            success: true,
+            user: {
+              id: user.id,
+              name: user.name,
+              email: user.email
+            },
+            projects: formattedProjects || []
           });
         }
       );
@@ -1789,7 +2612,7 @@ app.post('/api/quotes', checkPermission(['Admin', 'Member']), (req, res) => {
 });
 
 // Update an existing quote for the authenticated user (supports partial updates)
-app.put('/api/quotes/:id', checkPermission(['Admin', 'Member']), (req, res) => {
+app.put('/api/quotes/:id', checkProjectAccess(['Admin', 'Member']), (req, res) => {
   console.log('🔍 PUT /api/quotes/:id - Request received for user:', req.session.userId);
   console.log('Quote ID:', req.params.id);
   console.log('Request body:', req.body);
@@ -1953,7 +2776,7 @@ app.put('/api/quotes/:id', checkPermission(['Admin', 'Member']), (req, res) => {
 });
 
 // Delete a quote for the authenticated user
-app.delete('/api/quotes/:id', checkPermission(['Admin', 'Member']), (req, res) => {
+app.delete('/api/quotes/:id', checkProjectAccess(['Admin', 'Member']), (req, res) => {
   console.log('🔍 DELETE /api/quotes/:id - Request received for user:', req.session.userId);
   console.log('Quote ID:', req.params.id);
   
@@ -2025,7 +2848,7 @@ app.delete('/api/quotes/:id', checkPermission(['Admin', 'Member']), (req, res) =
 });
 
 // Get a single quote by ID for the authenticated user
-app.get('/api/quotes/:id', requireAuth, (req, res) => {
+app.get('/api/quotes/:id', checkProjectAccess(['Admin', 'Member']), (req, res) => {
   console.log('🔍 GET /api/quotes/:id - Request received for user:', req.session.userId);
   console.log('Quote ID:', req.params.id);
   
@@ -2147,11 +2970,11 @@ app.get('/api/quotes/:id/pdf', requireAuth, async (req, res) => {
     // Fetch company profile
     const companyProfile = await new Promise((resolve, reject) => {
       db.get(
-        'SELECT company_name FROM company_profile WHERE user_id = ?',
+        'SELECT company_name, logo_url FROM company_profile WHERE user_id = ?',
         [userId],
         (err, result) => {
           if (err) reject(err);
-          else resolve(result || { company_name: 'Company Co' });
+          else resolve(result || { company_name: 'Company Co', logo_url: null });
         }
       );
     });
@@ -2265,6 +3088,26 @@ app.get('/api/quotes/:id/pdf', requireAuth, async (req, res) => {
       htmlTemplate = htmlTemplate.replace(new RegExp(placeholder, 'g'), value);
     });
 
+    // Handle custom logo conditional rendering
+    if (companyProfile.logo_url) {
+      // Convert relative URL to absolute HTTP URL for PDF generation
+      const baseUrl = `http://localhost:${PORT}`;
+      const logoAbsoluteUrl = `${baseUrl}${companyProfile.logo_url}`;
+      console.log('Logo absolute URL for PDF:', logoAbsoluteUrl); // Debug log
+      
+      // Replace the conditional with the custom logo img tag with proper class
+      htmlTemplate = htmlTemplate.replace(
+        /\{\{#if customLogoUrl\}\}[\s\S]*?\{\{else\}\}[\s\S]*?\{\{\/if\}\}/g,
+        `<img src="${logoAbsoluteUrl}" alt="${companyProfile.company_name} Logo" class="custom-logo">`
+      );
+    } else {
+      // No custom logo, use default - remove the conditional and keep the else content
+      htmlTemplate = htmlTemplate.replace(
+        /\{\{#if customLogoUrl\}\}[\s\S]*?\{\{else\}\}([\s\S]*?)\{\{\/if\}\}/g,
+        '$1'
+      );
+    }
+
     // Handle conditional line items rendering
     if (lineItems.length > 0) {
       htmlTemplate = htmlTemplate.replace('{{#if hasLineItems}}', '');
@@ -2318,6 +3161,24 @@ app.get('/api/quotes/:id/pdf', requireAuth, async (req, res) => {
       htmlTemplate = htmlTemplate.replace('{{/if}}', '-->');
     }
 
+    // Inline all CSS styles for reliable PDF rendering
+    console.log('🎨 Inlining CSS styles for PDF generation...');
+    const inlinedHtml = juice(htmlTemplate, {
+      // Juice options for better PDF compatibility
+      removeStyleTags: true,  // Remove <style> tags after inlining
+      preserveMediaQueries: false,  // Remove media queries (not needed for PDF)
+      preservePseudos: false,  // Remove pseudo-selectors (not supported in PDF)
+      preserveFontFaces: true,  // Keep @font-face rules
+      webResources: {
+        images: false,  // Don't inline images (we have absolute URLs)
+        svgs: false,    // Don't inline SVGs
+        scripts: false, // Don't inline scripts
+        links: false    // Don't inline linked stylesheets
+      }
+    });
+    
+    console.log('✅ CSS inlining completed. HTML template processed for PDF generation.');
+
     // Generate PDF using Puppeteer
     console.log('🔄 Launching Puppeteer browser...');
     const browser = await puppeteer.launch({
@@ -2326,7 +3187,7 @@ app.get('/api/quotes/:id/pdf', requireAuth, async (req, res) => {
     });
 
     const page = await browser.newPage();
-    await page.setContent(htmlTemplate, { waitUntil: 'networkidle0' });
+    await page.setContent(inlinedHtml, { waitUntil: 'networkidle0' });
     
     const pdfBuffer = await page.pdf({
       format: 'A4',
@@ -2612,7 +3473,7 @@ app.post('/api/quotes/:quoteId/line-items', checkPermission(['Admin', 'Member'])
 });
 
 // Update a specific line item
-app.put('/api/line-items/:itemId', checkPermission(['Admin', 'Member']), (req, res) => {
+app.put('/api/line-items/:itemId', checkProjectAccess(['Admin', 'Member']), (req, res) => {
   console.log('🔍 PUT /api/line-items/:itemId - Request received for user:', req.session.userId);
   console.log('Item ID:', req.params.itemId);
   console.log('Request body:', req.body);
@@ -2710,7 +3571,7 @@ app.put('/api/line-items/:itemId', checkPermission(['Admin', 'Member']), (req, r
 });
 
 // Delete a specific line item
-app.delete('/api/line-items/:itemId', checkPermission(['Admin', 'Member']), (req, res) => {
+app.delete('/api/line-items/:itemId', checkProjectAccess(['Admin', 'Member']), (req, res) => {
   console.log('🔍 DELETE /api/line-items/:itemId - Request received for user:', req.session.userId);
   console.log('Item ID:', req.params.itemId);
   

@@ -38,31 +38,33 @@ const DashboardLayout = ({ companyName, updateCompanyName, currentUser, onLogout
         onLogout={onLogout} 
       />
 
-      <main className="flex-1 p-8 overflow-y-auto relative">
-        <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/projects" element={<ProjectsPage currentUser={currentUser} />} />
-          <Route path="/quotes" element={<QuotesPage currentUser={currentUser} />} />
-          <Route path="/quotes/:id" element={<ViewQuotePage currentUser={currentUser} />} />
-          <Route path="/ai-copilot" element={<AiCopilotPage />} />
-          <Route path="/reports" element={<ReportsPage />} />
-          <Route path="/integrations" element={<IntegrationsPage />} />
-          <Route path="/vendors" element={<VendorsDataPage />} />
-          <Route path="/settings" element={
-            <TeamMutationsProvider>
-              <SettingsPage companyName={companyName} updateCompanyName={updateCompanyName} currentUser={currentUser} />
-            </TeamMutationsProvider>
-          } />
-        </Routes>
-
+      <main className="flex-1 overflow-y-auto relative">
         {/* Notification Bell - Fixed Position */}
-        <div className="fixed top-4 right-4 z-50">
+        <div className="fixed top-6 right-6 z-[60]">
           <NotificationBell 
             notifications={state.notifications}
             unreadCount={state.unreadCount}
             onMarkAsRead={markAsRead}
             onMarkAllAsRead={markAllAsRead}
           />
+        </div>
+
+        <div className="p-8 pr-20">
+          <Routes>
+            <Route path="/" element={<Dashboard companyName={companyName} />} />
+            <Route path="/projects" element={<ProjectsPage currentUser={currentUser} />} />
+            <Route path="/quotes" element={<QuotesPage currentUser={currentUser} />} />
+            <Route path="/quotes/:id" element={<ViewQuotePage currentUser={currentUser} />} />
+            <Route path="/ai-copilot" element={<AiCopilotPage />} />
+            <Route path="/reports" element={<ReportsPage />} />
+            <Route path="/integrations" element={<IntegrationsPage />} />
+            <Route path="/vendors" element={<VendorsDataPage />} />
+            <Route path="/settings" element={
+              <TeamMutationsProvider>
+                <SettingsPage companyName={companyName} updateCompanyName={updateCompanyName} currentUser={currentUser} />
+              </TeamMutationsProvider>
+            } />
+          </Routes>
         </div>
       </main>
     </div>

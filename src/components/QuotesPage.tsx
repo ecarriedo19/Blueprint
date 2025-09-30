@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronDown, FileText, Edit3 } from 'lucide-react';
-import PageHeader from './PageHeader';
 import Card from './Card';
 import Button from './Button';
 import QuoteModal from './QuoteModal';
@@ -386,14 +385,8 @@ const QuotesPage = ({ currentUser }: QuotesPageProps) => {
         </div>
       )}
 
-      <div className="flex items-center justify-between">
-        <PageHeader 
-          title="Quotes" 
-          subtitle="Generate and manage construction quotes with AI assistance."
-          size="lg"
-        />
-        
-        {quotes.length > 0 && canModifyQuotes() && (
+      {quotes.length > 0 && canModifyQuotes() && (
+        <div className="flex justify-end mb-6">
           <div className="relative" ref={dropdownRef}>
             <Button
               onClick={handleDropdownToggle}
@@ -432,8 +425,8 @@ const QuotesPage = ({ currentUser }: QuotesPageProps) => {
               </div>
             )}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {error && (
         <Card variant="glass" className="border-red-500/50 bg-red-500/10">

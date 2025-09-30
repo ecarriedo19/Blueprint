@@ -1,7 +1,6 @@
-import React, { useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { useVendors, Vendor } from '../contexts/VendorContext';
 import { useApp } from '../contexts/AppContext';
-import PageHeader from './PageHeader';
 import Card from './Card';
 import Button from './Button';
 import VendorModal from './VendorModal';
@@ -129,13 +128,7 @@ const VendorsDataPage = () => {
   // Error state
   if (error) {
     return (
-      <div className="space-y-6">
-        <PageHeader 
-          title="Vendor & Subcontractor Hub" 
-          subtitle="Manage and analyze your vendor relationships."
-          size="lg"
-        />
-        
+      <div className="space-y-6">        
         <Card variant="glass" className="p-8 text-center">
           <div className="text-red-400 mb-4">
             <Building2 className="w-16 h-16 mx-auto mb-4 opacity-50" />
@@ -152,12 +145,6 @@ const VendorsDataPage = () => {
 
   return (
     <div className="space-y-6">
-      <PageHeader 
-        title="Vendor & Subcontractor Hub" 
-        subtitle="Manage and analyze your vendor relationships and performance."
-        size="lg"
-      />
-
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card variant="glass" className="p-6">

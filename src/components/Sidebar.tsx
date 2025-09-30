@@ -12,6 +12,14 @@ interface SidebarProps {
 const SidebarContext = React.createContext({ isSidebarOpen: true });
 
 const Sidebar: React.FC<SidebarProps> = ({ isSidebarOpen, toggleSidebar, currentUser, onLogout }) => {
+  // Helper function to construct absolute URLs for images
+  const getAbsoluteImageUrl = (relativePath: string | null): string | null => {
+    if (!relativePath) return null;
+    if (relativePath.startsWith('http')) return relativePath; // Already absolute
+    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+    return `${apiBaseUrl}${relativePath}`;
+  };
+
   return (
     <aside className={`h-screen transition-all duration-300 ease-in-out ${isSidebarOpen ? 'w-64' : 'w-20'}`}>
       <nav className="h-full flex flex-col bg-white/5 dark:bg-white/5 border-r border-gray-200/50 dark:border-white/10 backdrop-blur-xl shadow-2xl overflow-visible">
@@ -57,7 +65,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isSidebarOpen, toggleSidebar, current
 
         <div className="border-t border-gray-200/50 dark:border-white/10 flex p-3">
           <img
-            src={currentUser?.profilePictureUrl || `https://ui-avatars.com/api/?background=c7d2fe&color=3730a3&bold=true&name=${encodeURIComponent(currentUser?.name || 'User')}`}
+            src={getAbsoluteImageUrl(currentUser?.profilePictureUrl) || `https://ui-avatars.com/api/?background=c7d2fe&color=3730a3&bold=true&name=${encodeURIComponent(currentUser?.name || 'User')}`}
             alt=""
             className="w-10 h-10 rounded-md"
           />

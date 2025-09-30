@@ -1,15 +1,8 @@
-import PageHeader from './PageHeader';
 import Card from './Card';
 
 const IntegrationsPage = () => {
   return (
     <div className="space-y-6">
-      <PageHeader 
-        title="Integrations" 
-        subtitle="Connect your favorite tools and services."
-        size="lg"
-      />
-      
       <Card variant="glass" className="mb-6">
         <div className="flex items-center justify-between mb-6">
           <div>

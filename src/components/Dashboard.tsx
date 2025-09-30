@@ -2,9 +2,11 @@
 import { BarChart3, TrendingUp, DollarSign, Activity, AlertTriangle } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import Card from './Card';
-import PageHeader from './PageHeader';
 import { useDashboardSummary, useCurrentUser } from '../utils/queries';
 
+interface DashboardProps {
+  companyName?: string;
+}
 
 
 // Color palette for charts (using Tailwind colors)
@@ -29,7 +31,7 @@ const STATUS_COLORS: { [key: string]: string } = {
   'Rejected': '#ef4444'
 };
 
-export default function Dashboard() {
+export default function Dashboard({ companyName = 'Company Co' }: DashboardProps = {}) {
   const { data: currentUser } = useCurrentUser();
   const { data: dashboardData, isLoading: loading, error } = useDashboardSummary(!!currentUser);
 
@@ -96,10 +98,12 @@ export default function Dashboard() {
   if (loading) {
     return (
       <div className="space-y-6">
-        <PageHeader 
-          title="Dashboard" 
-          subtitle="Your construction business command center"
-        />
+        {/* Company Name Header */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-semibold text-slate-900 dark:text-white">
+            {companyName}
+          </h1>
+        </div>
         <Card variant="glass" className="text-center py-12">
           <div className="flex items-center justify-center gap-3">
             <div className="w-6 h-6 border-2 border-blue-400/30 border-t-blue-400 rounded-full animate-spin"></div>
@@ -113,10 +117,12 @@ export default function Dashboard() {
   if (loading) {
     return (
       <div className="space-y-6">
-        <PageHeader 
-          title="Dashboard" 
-          subtitle="Your construction business command center"
-        />
+        {/* Company Name Header */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-semibold text-slate-900 dark:text-white">
+            {companyName}
+          </h1>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {[...Array(4)].map((_, i) => (
             <Card key={i} variant="glass" className="h-32 animate-pulse">
@@ -133,10 +139,12 @@ export default function Dashboard() {
     console.log('Dashboard data:', dashboardData);
     return (
       <div className="space-y-6">
-        <PageHeader 
-          title="Dashboard" 
-          subtitle="Your construction business command center"
-        />
+        {/* Company Name Header */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-semibold text-slate-900 dark:text-white">
+            {companyName}
+          </h1>
+        </div>
         <Card variant="glass" className="border-red-500/50 bg-red-500/10 text-center py-12">
           <div className="flex items-center justify-center gap-3 mb-4">
             <AlertTriangle className="w-6 h-6 text-red-400" />
@@ -154,10 +162,9 @@ export default function Dashboard() {
     console.error('KPIs data is missing from dashboard response:', dashboardData);
     return (
       <div className="space-y-6">
-        <PageHeader 
-          title="Dashboard" 
-          subtitle="Your construction business command center"
-        />
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-white">{companyName || 'Blueprint'}</h1>
+        </div>
         <Card variant="glass" className="border-yellow-500/50 bg-yellow-500/10 text-center py-12">
           <div className="flex items-center justify-center gap-3 mb-4">
             <AlertTriangle className="w-6 h-6 text-yellow-400" />
@@ -172,10 +179,12 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <PageHeader 
-        title="Dashboard" 
-        subtitle="Your construction business command center"
-      />
+      {/* Company Name Header */}
+      <div className="mb-8">
+        <h1 className="text-3xl font-semibold text-slate-900 dark:text-white">
+          {companyName}
+        </h1>
+      </div>
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

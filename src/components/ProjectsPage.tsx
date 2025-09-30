@@ -3,7 +3,6 @@ import { useProjects } from '../utils/queries';
 import { useProjects as useProjectMutations } from '../contexts/ProjectState';
 import Card from './Card';
 import Button from './Button';
-import PageHeader from './PageHeader';
 
 interface User {
   id: number;
@@ -272,11 +271,6 @@ const ProjectsPage: React.FC<ProjectsPageProps> = ({ currentUser }) => {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <PageHeader
-        title="Projects"
-        subtitle="Manage your work."
-      />
-
       {error && (
         <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
           <p className="text-red-800 dark:text-red-200">{error instanceof Error ? error.message : 'An error occurred'}</p>

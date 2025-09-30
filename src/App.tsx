@@ -9,6 +9,7 @@ import { VendorProvider } from './contexts/VendorContext';
 import { AppProvider, useApp } from './contexts/AppContext';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { NotificationMutationsProvider } from './contexts/NotificationMutations';
+import { TeamMutationsProvider } from './contexts/TeamMutations';
 
 import Toast from './components/Toast';
 import ConfirmationModal from './components/ConfirmationModal';
@@ -24,6 +25,7 @@ import FinalCTA from './components/FinalCTA';
 import Footer from './components/Footer';
 import DashboardLayout from './components/DashboardLayout';
 import AcceptInvitePage from './components/AcceptInvitePage';
+import OnboardingPage from './components/OnboardingPage';
 import PricingPage from './components/PricingPage';
 import SubscribeSuccessPage from './components/SubscribeSuccessPage';
 import SubscribeCancelPage from './components/SubscribeCancelPage';
@@ -188,19 +190,72 @@ function AppContent() {
         <Route path="/subscribe-success" element={<SubscribeSuccessPage />} />
         <Route path="/subscribe-cancel" element={<SubscribeCancelPage />} />
         
+        {/* Onboarding route - accessible only to logged in users who haven't completed onboarding */}
+        <Route path="/onboarding" element={
+          isLoggedIn && !currentUser?.hasCompletedOnboarding ? (
+            <TeamMutationsProvider>
+              <OnboardingPage 
+                companyName={companyName}
+                updateCompanyName={updateCompanyName}
+                currentUser={currentUser}
+                onComplete={() => {
+                  // Invalidate current user query to refetch user data with updated onboarding status
+                  queryClient.invalidateQueries({ queryKey: ['currentUser'] });
+                }}
+              />
+            </TeamMutationsProvider>
+          ) : isLoggedIn ? (
+            // If already completed onboarding, redirect to dashboard
+            <DashboardLayout 
+              companyName={companyName} 
+              updateCompanyName={updateCompanyName}
+              currentUser={currentUser}
+              onLogout={handleLogout}
+            />
+          ) : (
+            // If not logged in, show marketing site
+            <>
+              <Navigation onAuthClick={handleAuthClick} />
+              <AuthModal isOpen={isAuthModalOpen} onClose={handleAuthClose} onLoginSuccess={handleLoginSuccess} />
+              <Hero />
+              <TrustedBy />
+              <Features />
+              <AIWizard />
+              <Integrations />
+              <Pricing />
+              <FinalCTA />
+              <Footer />
+            </>
+          )
+        } />
+        
         {/* Main application routes */}
         <Route path="/*" element={
           isLoggedIn ? (
-            <NotificationMutationsProvider>
-              <NotificationProvider userId={currentUser?.id || null}>
-                <DashboardLayout 
-                  companyName={companyName} 
+            // Check if user needs to complete onboarding
+            !currentUser?.hasCompletedOnboarding ? (
+              <TeamMutationsProvider>
+                <OnboardingPage 
+                  companyName={companyName}
                   updateCompanyName={updateCompanyName}
                   currentUser={currentUser}
-                  onLogout={handleLogout}
+                  onComplete={() => {
+                    queryClient.invalidateQueries({ queryKey: ['currentUser'] });
+                  }}
                 />
-              </NotificationProvider>
-            </NotificationMutationsProvider>
+              </TeamMutationsProvider>
+            ) : (
+              <NotificationMutationsProvider>
+                <NotificationProvider userId={currentUser?.id || null}>
+                  <DashboardLayout 
+                    companyName={companyName} 
+                    updateCompanyName={updateCompanyName}
+                    currentUser={currentUser}
+                    onLogout={handleLogout}
+                  />
+                </NotificationProvider>
+              </NotificationMutationsProvider>
+            )
           ) : (
             <>
               <Navigation onAuthClick={handleAuthClick} />

@@ -10,7 +10,6 @@ import {
   Tooltip, 
   ResponsiveContainer
 } from 'recharts';
-import PageHeader from './PageHeader';
 import Card from './Card';
 import Button from './Button';
 import Toast from './Toast';
@@ -586,12 +585,6 @@ const ReportsPage: React.FC = () => {
 
   return (
     <div className="space-y-8">
-      <PageHeader 
-        title="Advanced Reporting Suite" 
-        subtitle="Comprehensive business intelligence and financial analysis dashboard."
-        size="lg"
-      />
-
       {/* Report Tabs */}
       <Card variant="glass" className="p-6">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">

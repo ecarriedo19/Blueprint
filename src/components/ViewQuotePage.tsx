@@ -5,7 +5,6 @@ import { useQuotes as useQuoteMutations } from '../contexts/QuoteContext';
 import { useApp } from '../contexts/AppContext';
 import Card from './Card';
 import Button from './Button';
-import PageHeader from './PageHeader';
 import LineItemModal from './LineItemModal';
 import ChangeOrderModal from './ChangeOrderModal';
 import Toast from './Toast';
@@ -599,13 +598,20 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
         </Button>
       </div>
 
-      {/* Quote Header */}
-      <div className="flex items-center justify-between">
-        <PageHeader 
-          title={quote.quoteName}
-          subtitle={`Created ${new Date(quote.created_at).toLocaleDateString()}`}
-          size="lg"
-        />
+      {/* Minimalist Quote Header */}
+      <div className="flex items-center justify-between mb-8">
+        <div className="flex flex-col gap-3">
+          <button
+            onClick={() => navigate('/quotes')}
+            className="flex items-center gap-2 text-slate-400 hover:text-slate-200 transition-colors duration-200 self-start"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span className="text-sm font-medium">Back to Quotes</span>
+          </button>
+          <h1 className="text-3xl font-semibold text-slate-900 dark:text-white">
+            {quote.quoteName}
+          </h1>
+        </div>
         <Button
           onClick={handleDownloadPDF}
           variant="secondary"
