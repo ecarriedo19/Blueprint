@@ -274,3 +274,36 @@ export const useTeamMembers = () => {
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 };
+
+// Subscription Details Query
+export const useSubscriptionDetails = () => {
+  const { data: currentUser } = useCurrentUser();
+  
+  return useQuery({
+    queryKey: ['subscription-details'],
+    queryFn: async (): Promise<{
+      subscription: any;
+      planName: string;
+    }> => {
+      const response = await fetch('/api/subscription-details', {
+        credentials: 'include'
+      });
+
+      if (!response.ok) {
+        throw new Error('HTTP error! status: ' + response.status);
+      }
+
+      const data = await response.json();
+      if (data.success) {
+        return {
+          subscription: data.subscription,
+          planName: data.planName
+        };
+      } else {
+        throw new Error(data.error || 'Failed to fetch subscription details');
+      }
+    },
+    enabled: !!currentUser && currentUser.subscriptionStatus !== 'free',
+    staleTime: 2 * 60 * 1000, // 2 minutes
+  });
+};

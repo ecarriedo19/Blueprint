@@ -217,13 +217,25 @@ npm run dev      # Frontend only (:5173, separate terminal)
 ```
 
 ### Environment Setup
-Required `.env` variables:
+Complete `.env` configuration (all variables shown in actual .env file):
 ```env
+VITE_GEMINI_API_KEY=your_key_here     # Required for AI document analysis
 SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_ANON_KEY=your_key_here
-VITE_GEMINI_API_KEY=your_gemini_key    # For AI document analysis
-STRIPE_SECRET_KEY=sk_test_...          # For subscriptions (optional)
-RESEND_API_KEY=re_...                  # For email invitations (optional)
+SUPABASE_ANON_KEY=your_key_here       # For vector database RAG
+
+# Email Service (Resend) - for team invitations
+RESEND_API_KEY=re_...                 # Optional but needed for invites
+
+# Application Configuration
+NODE_ENV=development
+PORT=4000
+SESSION_SECRET=blueprint-session-secret-key-change-in-production
+FRONTEND_URL=http://localhost:5173
+VITE_API_BASE_URL=http://localhost:4000
+
+# Stripe Configuration - for subscription billing
+STRIPE_SECRET_KEY=sk_test_...
+VITE_STRIPE_PUBLISHABLE_KEY=pk_test_...
 ```
 
 ### RAG Knowledge Base Setup
@@ -270,23 +282,38 @@ The `/api/ai-context` endpoint provides structured business data for AI assistan
 - Combined formatting with industry guidance
 
 ### Embedding Pipeline
-Uses `@xenova/transformers` for server-side embeddings:
+Uses `@xenova/transformers` for server-side embeddings in `scripts/embed.mjs`:
 ```javascript
 // Pattern: Generate embeddings for semantic search
 const embedder = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
 const embedding = await embedder(text, { pooling: 'mean', normalize: true });
+// Stores 384-dimensional vectors in Supabase with ivfflat index
+```
+
+### Knowledge Base RAG Setup
+Automated embedding generation for `knowledge-base/*.md` files:
+```bash
+npm run embed               # Processes markdown → embeddings → Supabase
+npm run setup-supabase     # Creates knowledge table and search function
 ```
 
 ## Critical Integration Notes
 
 ### Session Management
-- Express sessions stored in SQLite (`sessions.db`)
-- Google OAuth redirect handling in `checkRedirectResult()`
-- Session persistence across browser refreshes
+- Express sessions stored in SQLite (`sessions.db`) using `connect-sqlite3`
+- Google OAuth redirect handling in `checkRedirectResult()` from `src/utils/googleAuth.ts`
+- Session persistence across browser refreshes with `credentials: 'include'`
+- Session middleware: `express-session` with SQLiteStore backing
+
+### Authentication Flow
+No explicit `requireAuth` middleware - auth is handled by:
+1. Session validation in endpoints via `req.session.userId`
+2. Frontend auth state via `useCurrentUser()` TanStack Query hook
+3. 401 responses trigger auth redirects in query error handling
 
 ### CORS Headers for OAuth
 ```javascript
-// Required for Google OAuth popups
+// Required for Google OAuth popups in server.cjs
 res.header('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
 res.header('Cross-Origin-Embedder-Policy', 'unsafe-none');
 ```
@@ -301,11 +328,13 @@ db.run('INSERT INTO...', [values], function(err) {
 });
 ```
 
-### WebSocket Notifications
-Real-time notifications via WebSocket server on same port:
+### WebSocket Implementation
+Real-time notifications via WebSocket server on same HTTP server:
 ```javascript
-// Server: activeConnections.get(userId)?.send(JSON.stringify(notification))
-// Client: WebSocket connection established in NotificationContext
+// Server setup: WebSocket.Server({ server }) on http.createServer(app)
+// Connection tracking: activeConnections Map stores user ID → WebSocket
+// Authentication: Client sends { type: 'auth', userId } after connection
+// Notification dispatch: activeConnections.get(userId)?.send(JSON.stringify(notification))
 ```
 
 ### PDF Generation
@@ -313,6 +342,14 @@ Uses Puppeteer for server-side PDF generation:
 ```javascript
 // Pattern: HTML template → Puppeteer → PDF buffer → download
 const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true });
+```
+
+### File Upload & Processing
+Multer configuration for document analysis:
+```javascript
+// 10MB limit, memory storage for temporary processing
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10MB } });
+// Supports PDF via pdf-parse and text files for AI analysis
 ```
 
 ## Construction Industry Context

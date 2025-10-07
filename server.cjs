@@ -709,6 +709,80 @@ app.get('/api/test-session', (req, res) => {
   });
 });
 
+// DEVELOPMENT ONLY - Test login endpoint for Cypress E2E testing
+app.post('/api/test/login', async (req, res) => {
+  try {
+    // Create or get test user for E2E testing
+    const testUser = {
+      email: 'test@blueprint.com',
+      name: 'Test User',
+      googleId: 'test-user-cypress',
+      provider: 'test',
+      profilePictureUrl: null,
+      role: 'Admin',
+      subscriptionStatus: 'active',
+      hasCompletedOnboarding: true
+    };
+
+    // Check if test user exists, create if not
+    db.get('SELECT * FROM users WHERE email = ?', [testUser.email], (err, existingUser) => {
+      if (err) {
+        console.error('❌ Error checking for test user:', err);
+        return res.status(500).json({ error: 'Database error' });
+      }
+
+      if (existingUser) {
+        // User exists, create session
+        req.session.userId = existingUser.id;
+        req.session.save((err) => {
+          if (err) {
+            console.error('❌ Error saving test session:', err);
+            return res.status(500).json({ error: 'Failed to create test session' });
+          }
+          console.log('✅ Test login session created for existing user:', existingUser.id);
+          res.json({ 
+            success: true,
+            user: existingUser,
+            message: 'Test login successful'
+          });
+        });
+      } else {
+        // Create new test user
+        db.run(
+          `INSERT INTO users (googleId, email, name, profilePictureUrl, provider, role, subscriptionStatus, hasCompletedOnboarding) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [testUser.googleId, testUser.email, testUser.name, testUser.profilePictureUrl, 
+           testUser.provider, testUser.role, testUser.subscriptionStatus, testUser.hasCompletedOnboarding],
+          function(err) {
+            if (err) {
+              console.error('❌ Error creating test user:', err);
+              return res.status(500).json({ error: 'Failed to create test user' });
+            }
+
+            // Create session for new user
+            req.session.userId = this.lastID;
+            req.session.save((err) => {
+              if (err) {
+                console.error('❌ Error saving test session:', err);
+                return res.status(500).json({ error: 'Failed to create test session' });
+              }
+              console.log('✅ Test user created and logged in with ID:', this.lastID);
+              res.json({ 
+                success: true,
+                user: { ...testUser, id: this.lastID },
+                message: 'Test user created and logged in successfully'
+              });
+            });
+          }
+        );
+      }
+    });
+  } catch (error) {
+    console.error('❌ Error in test login endpoint:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Notification helper functions
 const createNotification = (userId, message) => {
   // Save notification to database
@@ -950,7 +1024,7 @@ const checkProjectAccess = (allowedRoles = ['Admin', 'Member']) => {
 // Get current user profile
 app.get('/api/me', requireAuth, (req, res) => {
   db.get(
-    'SELECT id, googleId, email, name, profilePictureUrl, provider, role, hasCompletedOnboarding FROM users WHERE id = ?',
+    'SELECT id, googleId, email, name, profilePictureUrl, provider, role, hasCompletedOnboarding, subscriptionStatus, stripeCustomerId FROM users WHERE id = ?',
     [req.session.userId],
     (err, user) => {
       if (err) return res.status(500).json({ error: err.message });
@@ -962,6 +1036,10 @@ app.get('/api/me', requireAuth, (req, res) => {
       // Ensure hasCompletedOnboarding has a default value
       if (user.hasCompletedOnboarding === null || user.hasCompletedOnboarding === undefined) {
         user.hasCompletedOnboarding = 0;
+      }
+      // Ensure subscriptionStatus has a default value
+      if (!user.subscriptionStatus) {
+        user.subscriptionStatus = 'free';
       }
       res.json(user);
     }
@@ -5243,6 +5321,15 @@ app.post('/api/create-checkout-session', async (req, res) => {
       });
 
       if (user) {
+        // Security check: Prevent users with active subscriptions from creating new ones
+        if (user.subscriptionStatus === 'active') {
+          return res.status(400).json({
+            success: false,
+            error: 'You already have an active subscription. Please manage your existing subscription in the settings.',
+            code: 'EXISTING_SUBSCRIPTION'
+          });
+        }
+
         customerId = user.stripeCustomerId;
         sessionMetadata.userId = userId.toString();
         sessionMetadata.userEmail = user.email;
@@ -5324,6 +5411,162 @@ app.post('/api/create-checkout-session', async (req, res) => {
   }
 });
 
+// Create Stripe Customer Portal Session (for subscription management)
+app.post('/api/create-portal-session', requireAuth, async (req, res) => {
+  if (!stripe) {
+    return res.status(500).json({
+      success: false,
+      error: 'Stripe is not configured. Please set STRIPE_SECRET_KEY in your environment variables.'
+    });
+  }
+
+  const userId = req.session.userId;
+  console.log('🔄 Creating portal session for user:', userId);
+
+  try {
+    // Fetch user's Stripe Customer ID from database
+    const user = await new Promise((resolve, reject) => {
+      db.get(
+        'SELECT stripeCustomerId, email, subscriptionStatus FROM users WHERE id = ?',
+        [userId],
+        (err, row) => {
+          if (err) {
+            reject(err);
+          } else {
+            resolve(row);
+          }
+        }
+      );
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found'
+      });
+    }
+
+    if (!user.stripeCustomerId) {
+      return res.status(400).json({
+        success: false,
+        error: 'No Stripe customer ID found. Please subscribe to a plan first.',
+        requiresSubscription: true
+      });
+    }
+
+    // Create the portal session
+    const portalSession = await stripe.billingPortal.sessions.create({
+      customer: user.stripeCustomerId,
+      return_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/settings?tab=billing`
+    });
+
+    console.log('✅ Created Stripe portal session:', portalSession.id);
+
+    res.json({
+      success: true,
+      url: portalSession.url
+    });
+
+  } catch (error) {
+    console.error('Error creating portal session:', error);
+    
+    // Handle specific Stripe configuration error
+    if (error.type === 'StripeInvalidRequestError' && 
+        error.message.includes('No configuration provided')) {
+      return res.status(500).json({
+        success: false,
+        error: 'Stripe Customer Portal is not configured. Please contact support.',
+        details: 'The billing portal configuration needs to be set up in Stripe dashboard.'
+      });
+    }
+    
+    res.status(500).json({
+      success: false,
+      error: 'Failed to create portal session',
+      details: error.message
+    });
+  }
+});
+
+// Get current subscription details from Stripe
+app.get('/api/subscription-details', requireAuth, async (req, res) => {
+  if (!stripe) {
+    return res.status(500).json({
+      success: false,
+      error: 'Stripe is not configured.'
+    });
+  }
+
+  const userId = req.session.userId;
+
+  try {
+    // Get user's Stripe customer ID
+    const user = await new Promise((resolve, reject) => {
+      db.get(
+        'SELECT stripeCustomerId, email, subscriptionStatus FROM users WHERE id = ?',
+        [userId],
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
+        }
+      );
+    });
+
+    if (!user || !user.stripeCustomerId) {
+      return res.json({
+        success: true,
+        subscription: null,
+        planName: 'Free Plan'
+      });
+    }
+
+    // Get active subscriptions for the customer
+    const subscriptions = await stripe.subscriptions.list({
+      customer: user.stripeCustomerId,
+      status: 'active',
+      limit: 1
+    });
+
+    if (subscriptions.data.length === 0) {
+      return res.json({
+        success: true,
+        subscription: null,
+        planName: 'Free Plan'
+      });
+    }
+
+    const subscription = subscriptions.data[0];
+    const priceId = subscription.items.data[0].price.id;
+    const productId = subscription.items.data[0].price.product;
+
+    // Get product details to get the name
+    const product = await stripe.products.retrieve(productId);
+
+    res.json({
+      success: true,
+      subscription: {
+        id: subscription.id,
+        status: subscription.status,
+        currentPeriodEnd: subscription.current_period_end,
+        cancelAtPeriodEnd: subscription.cancel_at_period_end,
+        priceId: priceId,
+        amount: subscription.items.data[0].price.unit_amount,
+        currency: subscription.items.data[0].price.currency,
+        interval: subscription.items.data[0].price.recurring.interval
+      },
+      planName: product.name || 'Pro Plan'
+    });
+
+  } catch (error) {
+    console.error('Error fetching subscription details:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch subscription details',
+      details: error.message
+    });
+  }
+});
+
 // Stripe Webhook for handling successful payments
 app.post('/api/stripe-webhook', express.raw({type: 'application/json'}), async (req, res) => {
   const sig = req.headers['stripe-signature'];
@@ -5367,6 +5610,16 @@ app.post('/api/stripe-webhook', express.raw({type: 'application/json'}), async (
                 console.error('Error updating user subscription:', err);
               } else {
                 console.log(`✅ Updated subscription for user ${session.metadata.userId}`);
+                
+                // Send real-time update to the user via WebSocket
+                const userConnection = activeConnections.get(parseInt(session.metadata.userId));
+                if (userConnection && userConnection.readyState === WebSocket.OPEN) {
+                  userConnection.send(JSON.stringify({ 
+                    type: 'user_updated',
+                    message: 'Your subscription has been activated!' 
+                  }));
+                  console.log(`📡 Sent user_updated WebSocket message to user ${session.metadata.userId}`);
+                }
               }
             }
           );
@@ -5390,6 +5643,9 @@ app.post('/api/stripe-webhook', express.raw({type: 'application/json'}), async (
                 
                 // Create welcome notification
                 createNotification(this.lastID, `Welcome to Blueprint! Your ${subscription.items.data[0].price.nickname || 'subscription'} is now active.`);
+                
+                // Note: For new users created via webhook, we don't send WebSocket update 
+                // since they're not yet connected. They'll get the updated status on login.
               }
             }
           );
@@ -5399,16 +5655,72 @@ app.post('/api/stripe-webhook', express.raw({type: 'application/json'}), async (
       }
       break;
 
-    case 'customer.subscription.updated':
-    case 'customer.subscription.deleted':
-      const subscriptionUpdate = event.data.object;
-      console.log(`✅ Subscription ${event.type}:`, subscriptionUpdate.id);
+    case 'customer.subscription.created':
+      const newSubscription = event.data.object;
+      console.log(`✅ New subscription created:`, newSubscription.id);
 
       try {
-        // Update user subscription status
-        const status = subscriptionUpdate.status === 'active' ? 'active' : 
-                      subscriptionUpdate.status === 'canceled' ? 'canceled' : 
-                      'inactive';
+        // Update user subscription status to active when new subscription is created
+        db.run(
+          'UPDATE users SET subscriptionStatus = ? WHERE stripeCustomerId = ?',
+          ['active', newSubscription.customer],
+          function(err) {
+            if (err) {
+              console.error('Error updating subscription status to active:', err);
+            } else {
+              console.log(`✅ Updated subscription status to active for customer ${newSubscription.customer}`);
+              
+              // Get user ID and send WebSocket update
+              db.get(
+                'SELECT id FROM users WHERE stripeCustomerId = ?',
+                [newSubscription.customer],
+                (err, user) => {
+                  if (!err && user) {
+                    const userConnection = activeConnections.get(user.id);
+                    if (userConnection && userConnection.readyState === WebSocket.OPEN) {
+                      userConnection.send(JSON.stringify({
+                        type: 'subscription_updated',
+                        status: 'active',
+                        message: 'Welcome back! Your subscription is now active.'
+                      }));
+                      console.log(`📡 Sent subscription activation notification to user ${user.id}`);
+                    }
+                  }
+                }
+              );
+            }
+          }
+        );
+      } catch (error) {
+        console.error('Error processing new subscription:', error);
+      }
+      break;
+
+    case 'customer.subscription.updated':
+      const subscriptionUpdate = event.data.object;
+      console.log(`✅ Subscription updated:`, subscriptionUpdate.id);
+
+      try {
+        // Update user subscription status based on subscription status
+        let status;
+        switch (subscriptionUpdate.status) {
+          case 'active':
+            status = 'active';
+            break;
+          case 'past_due':
+            status = 'past_due';
+            break;
+          case 'canceled':
+            status = 'canceled';
+            break;
+          case 'unpaid':
+          case 'incomplete':
+          case 'incomplete_expired':
+            status = 'past_due';
+            break;
+          default:
+            status = 'inactive';
+        }
 
         db.run(
           'UPDATE users SET subscriptionStatus = ? WHERE stripeCustomerId = ?',
@@ -5418,11 +5730,112 @@ app.post('/api/stripe-webhook', express.raw({type: 'application/json'}), async (
               console.error('Error updating subscription status:', err);
             } else {
               console.log(`✅ Updated subscription status to ${status} for customer ${subscriptionUpdate.customer}`);
+              
+              // Get user ID and send WebSocket update
+              db.get(
+                'SELECT id FROM users WHERE stripeCustomerId = ?',
+                [subscriptionUpdate.customer],
+                (err, user) => {
+                  if (!err && user) {
+                    const userConnection = activeConnections.get(user.id);
+                    if (userConnection && userConnection.readyState === WebSocket.OPEN) {
+                      userConnection.send(JSON.stringify({ 
+                        type: 'user_updated',
+                        message: `Your subscription status has been updated to ${status}` 
+                      }));
+                      console.log(`📡 Sent user_updated WebSocket message to user ${user.id} for status: ${status}`);
+                    }
+                  }
+                }
+              );
             }
           }
         );
       } catch (error) {
         console.error('Error processing subscription update:', error);
+      }
+      break;
+
+    case 'customer.subscription.deleted':
+      const deletedSubscription = event.data.object;
+      console.log(`✅ Subscription deleted:`, deletedSubscription.id);
+
+      try {
+        db.run(
+          'UPDATE users SET subscriptionStatus = ? WHERE stripeCustomerId = ?',
+          ['canceled', deletedSubscription.customer],
+          function(err) {
+            if (err) {
+              console.error('Error updating subscription status to canceled:', err);
+            } else {
+              console.log(`✅ Updated subscription status to canceled for customer ${deletedSubscription.customer}`);
+              
+              // Get user ID and send WebSocket update
+              db.get(
+                'SELECT id FROM users WHERE stripeCustomerId = ?',
+                [deletedSubscription.customer],
+                (err, user) => {
+                  if (!err && user) {
+                    const userConnection = activeConnections.get(user.id);
+                    if (userConnection && userConnection.readyState === WebSocket.OPEN) {
+                      userConnection.send(JSON.stringify({ 
+                        type: 'user_updated',
+                        message: 'Your subscription has been canceled' 
+                      }));
+                      console.log(`📡 Sent user_updated WebSocket message to user ${user.id} for canceled subscription`);
+                    }
+                  }
+                }
+              );
+            }
+          }
+        );
+      } catch (error) {
+        console.error('Error processing subscription deletion:', error);
+      }
+      break;
+
+    case 'invoice.payment_failed':
+      const failedInvoice = event.data.object;
+      console.log(`⚠️ Payment failed for invoice:`, failedInvoice.id);
+
+      try {
+        // Get the subscription from the invoice
+        if (failedInvoice.subscription) {
+          const subscription = await stripe.subscriptions.retrieve(failedInvoice.subscription);
+          
+          db.run(
+            'UPDATE users SET subscriptionStatus = ? WHERE stripeCustomerId = ?',
+            ['past_due', failedInvoice.customer],
+            function(err) {
+              if (err) {
+                console.error('Error updating subscription status to past_due:', err);
+              } else {
+                console.log(`✅ Updated subscription status to past_due for customer ${failedInvoice.customer}`);
+                
+                // Get user ID and send WebSocket update
+                db.get(
+                  'SELECT id FROM users WHERE stripeCustomerId = ?',
+                  [failedInvoice.customer],
+                  (err, user) => {
+                    if (!err && user) {
+                      const userConnection = activeConnections.get(user.id);
+                      if (userConnection && userConnection.readyState === WebSocket.OPEN) {
+                        userConnection.send(JSON.stringify({ 
+                          type: 'user_updated',
+                          message: 'There was an issue with your payment. Please update your payment method.' 
+                        }));
+                        console.log(`📡 Sent user_updated WebSocket message to user ${user.id} for payment failure`);
+                      }
+                    }
+                  }
+                );
+              }
+            }
+          );
+        }
+      } catch (error) {
+        console.error('Error processing payment failure:', error);
       }
       break;
 

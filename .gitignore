@@ -38,4 +38,9 @@ node_modules/
 # OS specific
 # Task files
 tasks.json
-tasks/ 
+tasks/
+
+# Cypress artifacts
+cypress/screenshots/
+cypress/videos/
+cypress/downloads/ 

@@ -87,6 +87,10 @@ const PricingPage: React.FC = () => {
       const data = await response.json();
 
       if (!data.success) {
+        // Handle specific error for users with existing subscriptions
+        if (data.code === 'EXISTING_SUBSCRIPTION') {
+          throw new Error(data.error || 'You already have an active subscription. Please manage it in your settings.');
+        }
         throw new Error(data.error || 'Failed to create checkout session');
       }
 

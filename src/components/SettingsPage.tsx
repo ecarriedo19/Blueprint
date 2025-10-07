@@ -1,11 +1,12 @@
 import { useState, useCallback, useEffect } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import Card from './Card';
 import Button from './Button';
 import ThemeToggle from './ThemeToggle';
-import { Building2, CreditCard, Users2, Link, Shield, ChevronRight, Palette, Mail, Trash2, UserCheck, AlertCircle, Upload, X, Settings } from 'lucide-react';
+import { Building2, CreditCard, Users2, Link, Shield, ChevronRight, Palette, Mail, Trash2, UserCheck, AlertCircle, Upload, X, Settings, CheckCircle, ExternalLink, Crown } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useApp } from '../contexts/AppContext';
-import { useTeamMembers } from '../utils/queries';
+import { useTeamMembers, useSubscriptionDetails } from '../utils/queries';
 import { useTeamMutations } from '../contexts/TeamMutations';
 import ProjectAccessModal from './ProjectAccessModal';
 
@@ -366,11 +367,266 @@ const TeamManagementContent = () => {
   );
 };
 
+// Billing Management Component
+const BillingManagementContent = ({ currentUser }: { currentUser: any }) => {
+  const navigate = useNavigate();
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  // Fetch subscription details for active users
+  const { data: subscriptionData, isLoading: isLoadingSubscription } = useSubscriptionDetails();
+
+  // Get subscription status and details
+  const subscriptionStatus = currentUser?.subscriptionStatus || 'free';
+  const hasActiveSubscription = subscriptionStatus === 'active';
+  const isPastDue = subscriptionStatus === 'past_due';
+  const isCanceled = subscriptionStatus === 'canceled';
+  const isFreeUser = subscriptionStatus === 'free';
+
+  // Handle upgrade click for free users
+  const handleUpgradeClick = () => {
+    navigate('/pricing');
+  };
+
+  // Handle manage subscription click for paid users
+  const handleManageSubscription = async () => {
+    setIsLoading(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      const response = await fetch('/api/create-portal-session', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      // Check if response is JSON
+      let data;
+      try {
+        data = await response.json();
+      } catch (parseError) {
+        console.error('Error parsing response:', parseError);
+        setError('Invalid response from server. Please try again.');
+        return;
+      }
+
+      if (response.ok && data.success) {
+        // Redirect to Stripe Customer Portal
+        window.location.href = data.url;
+      } else {
+        setError(data.error || 'Failed to open billing portal. Please try again.');
+      }
+    } catch (err) {
+      console.error('Error opening billing portal:', err);
+      setError('Network error. Please check your connection and try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Render view for FREE users
+  if (isFreeUser) {
+    return (
+      <div className="space-y-6">
+        {/* Current Plan Display for Free Users */}
+        <div className="bg-slate-800/50 rounded-lg p-6 border border-slate-700/50">
+          <div className="flex items-center justify-between mb-4">
+            <h4 className="text-lg font-semibold text-white flex items-center gap-2">
+              <Crown className="w-5 h-5 text-slate-400" />
+              Current Plan
+            </h4>
+            <div className="px-3 py-1 bg-slate-700/50 rounded-full">
+              <span className="text-slate-300 text-sm font-medium">Free</span>
+            </div>
+          </div>
+          
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-slate-300">Plan:</span>
+              <span className="text-white font-medium">Free Plan</span>
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <span className="text-slate-300">Status:</span>
+              <span className="text-slate-400 font-medium">Active</span>
+            </div>
+
+            <div className="mt-4 p-3 bg-slate-700/30 border border-slate-600/50 rounded-lg">
+              <p className="text-slate-300 text-sm">
+                You're currently on the Free Plan with access to basic features. Upgrade to unlock advanced project management tools, unlimited team members, and priority support.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Upgrade Section for Free Users */}
+        <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-lg p-6 border border-blue-500/30">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2 bg-blue-500/20 rounded-lg">
+              <Crown className="w-6 h-6 text-blue-400" />
+            </div>
+            <div>
+              <h4 className="text-lg font-semibold text-white">Unlock Pro Features</h4>
+              <p className="text-blue-200 text-sm">Take your construction management to the next level</p>
+            </div>
+          </div>
+          
+          <div className="space-y-3 mb-6">
+            <div className="flex items-center gap-3 text-sm text-slate-300">
+              <CheckCircle className="w-4 h-4 text-green-400 flex-shrink-0" />
+              <span>Unlimited projects and quotes</span>
+            </div>
+            <div className="flex items-center gap-3 text-sm text-slate-300">
+              <CheckCircle className="w-4 h-4 text-green-400 flex-shrink-0" />
+              <span>Advanced AI document analysis</span>
+            </div>
+            <div className="flex items-center gap-3 text-sm text-slate-300">
+              <CheckCircle className="w-4 h-4 text-green-400 flex-shrink-0" />
+              <span>Team collaboration & role management</span>
+            </div>
+            <div className="flex items-center gap-3 text-sm text-slate-300">
+              <CheckCircle className="w-4 h-4 text-green-400 flex-shrink-0" />
+              <span>Priority customer support</span>
+            </div>
+          </div>
+          
+          <Button
+            onClick={handleUpgradeClick}
+            className="w-full flex items-center justify-center gap-2"
+            variant="primary"
+          >
+            <Crown className="w-4 h-4" />
+            Upgrade to Pro
+          </Button>
+          
+          <p className="text-center text-slate-400 text-xs mt-3">
+            30-day money-back guarantee • Cancel anytime
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Render view for PAID users (active, past_due, canceled)
+  return (
+    <div className="space-y-6">
+      {/* Status Messages */}
+      {error && (
+        <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-3">
+          <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
+          <p className="text-red-300 text-sm">{error}</p>
+          <button 
+            onClick={() => setError('')}
+            className="ml-auto text-red-400 hover:text-red-300"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
+      {success && (
+        <div className="p-4 bg-green-500/10 border border-green-500/30 rounded-lg flex items-center gap-3">
+          <CheckCircle className="w-5 h-5 text-green-400 flex-shrink-0" />
+          <p className="text-green-300 text-sm">{success}</p>
+          <button 
+            onClick={() => setSuccess('')}
+            className="ml-auto text-green-400 hover:text-green-300"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
+      {/* Current Plan Display for Paid Users */}
+      <div className="bg-slate-800/50 rounded-lg p-6 border border-slate-700/50">
+        <div className="mb-4">
+          <h4 className="text-lg font-semibold text-white flex items-center gap-2">
+            <CreditCard className="w-5 h-5 text-blue-400" />
+            Current Plan
+          </h4>
+        </div>
+        
+        {isLoadingSubscription ? (
+          <div className="flex items-center justify-center py-8">
+            <div className="flex items-center gap-3 text-slate-400">
+              <div className="w-5 h-5 border-2 border-slate-400/30 border-t-slate-400 rounded-full animate-spin"></div>
+              <span>Loading subscription details...</span>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-slate-300">Plan:</span>
+              <span className="text-white font-medium">
+                {subscriptionData?.planName || 'Subscription Plan'}
+              </span>
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <span className="text-slate-300">Status:</span>
+              <span className={`font-medium capitalize ${
+                hasActiveSubscription ? 'text-green-400' :
+                isPastDue ? 'text-yellow-400' : 'text-red-400'
+              }`}>
+                {hasActiveSubscription ? 'Active' : 
+                 isPastDue ? 'Past Due' : 'Canceled'}
+              </span>
+            </div>
+
+            {isPastDue && (
+              <div className="mt-4 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
+                <p className="text-yellow-300 text-sm flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4" />
+                  Your payment is past due. Please update your payment method to continue using all features.
+                </p>
+              </div>
+            )}
+
+            {isCanceled && (
+              <div className="mt-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+                <p className="text-red-300 text-sm flex items-center gap-2">
+                  <X className="w-4 h-4" />
+                  Your subscription has been canceled. You can reactivate it through the billing portal.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Subscription Management for Paid Users */}
+      <div className="bg-slate-800/50 rounded-lg p-6 border border-slate-700/50">
+        <h4 className="text-lg font-semibold text-white mb-3">Subscription Management</h4>
+        <p className="text-slate-300 text-sm mb-4">
+          Access your Stripe Customer Portal to manage your subscription, view billing history, 
+          update payment methods, and download invoices.
+        </p>
+        
+        <Button
+          onClick={handleManageSubscription}
+          loading={isLoading}
+          disabled={isLoading}
+          className="flex items-center gap-2"
+          variant="primary"
+        >
+          <ExternalLink className="w-4 h-4" />
+          Manage Subscription & Billing
+        </Button>
+      </div>
+    </div>
+  );
+};
+
 interface User {
   id: number;
   name: string;
   email: string;
   role?: string;
+  subscriptionStatus?: string;
 }
 
 interface SettingsPageProps {
@@ -380,6 +636,7 @@ interface SettingsPageProps {
 }
 
 const SettingsPage = ({ companyName, updateCompanyName, currentUser }: SettingsPageProps) => {
+  const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState('profile');
   const [newCompanyName, setNewCompanyName] = useState(companyName);
   const [isSaving, setIsSaving] = useState(false);
@@ -389,6 +646,14 @@ const SettingsPage = ({ companyName, updateCompanyName, currentUser }: SettingsP
   const [logoError, setLogoError] = useState('');
   const [logoSuccess, setLogoSuccess] = useState('');
   const { theme } = useTheme();
+
+  // Handle URL parameters to set initial tab
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam && ['profile', 'appearance', 'billing', 'team', 'integrations', 'security'].includes(tabParam)) {
+      setActiveTab(tabParam);
+    }
+  }, [searchParams]);
 
   // Fetch company profile data (including logo) on component mount
   useEffect(() => {
@@ -719,7 +984,7 @@ const SettingsPage = ({ companyName, updateCompanyName, currentUser }: SettingsP
       billing: {
         title: 'Billing & Subscription',
         description: 'Manage your subscription and payment details.',
-        content: 'View your current plan, billing history, and manage your payment methods. Upgrade or modify your subscription as needed.'
+        content: <BillingManagementContent currentUser={currentUser} />
       },
       team: {
         title: 'Team Members',

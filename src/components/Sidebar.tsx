@@ -23,8 +23,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isSidebarOpen, toggleSidebar, current
   return (
     <aside className={`h-screen transition-all duration-300 ease-in-out ${isSidebarOpen ? 'w-64' : 'w-20'}`}>
       <nav className="h-full flex flex-col bg-white/5 dark:bg-white/5 border-r border-gray-200/50 dark:border-white/10 backdrop-blur-xl shadow-2xl overflow-visible">
-        <div className="p-4 pb-2 flex justify-between items-center">
-          <img src="/logo-new.png" className={`overflow-hidden transition-all ${isSidebarOpen ? 'w-32' : 'w-0'}`} alt="Blueprint Logo" />
+        <div className="p-4 pb-2 flex justify-end items-center">
           <button 
             onClick={toggleSidebar} 
             className="p-1.5 rounded-lg bg-gray-100/20 dark:bg-gray-50/5 hover:bg-gray-100/30 dark:hover:bg-gray-50/10 transition-colors duration-200"
@@ -71,7 +70,18 @@ const Sidebar: React.FC<SidebarProps> = ({ isSidebarOpen, toggleSidebar, current
           />
           <div className={`flex justify-between items-center overflow-hidden transition-all ${isSidebarOpen ? 'w-52 ml-3' : 'w-0'}`}>
             <div className="leading-4">
-              <h4 className="font-semibold text-gray-800 dark:text-white">{currentUser?.name || 'Loading...'}</h4>
+              <div className="flex items-center gap-2">
+                <h4 className="font-semibold text-gray-800 dark:text-white">{currentUser?.name || 'Loading...'}</h4>
+                {currentUser?.subscriptionStatus === 'active' ? (
+                  <span className="px-2 py-0.5 text-xs font-medium bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-full">
+                    Pro
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-full">
+                    Free
+                  </span>
+                )}
+              </div>
               <span className="text-xs text-gray-500 dark:text-gray-400">{currentUser?.email || 'Loading...'}</span>
             </div>
           </div>

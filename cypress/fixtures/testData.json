@@ -1,0 +1,20 @@
+{
+  "testUser": {
+    "email": "test@blueprint.com",
+    "name": "Test User",
+    "role": "Admin",
+    "subscriptionStatus": "active"
+  },
+  "testProject": {
+    "name": "Test Construction Project",
+    "budget": 50000,
+    "status": "Planning",
+    "description": "A test project for E2E testing"
+  },
+  "testQuote": {
+    "quoteName": "Test Quote",
+    "status": "Draft",
+    "budget": 25000,
+    "timeToDevelop": "2-3 weeks"
+  }
+}

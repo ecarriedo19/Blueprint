@@ -62,9 +62,10 @@ const initialState: NotificationState = {
 interface NotificationProviderProps {
   children: React.ReactNode;
   userId: number | null;
+  onUserUpdated?: () => void;
 }
 
-export const NotificationProvider: React.FC<NotificationProviderProps> = ({ children, userId }) => {
+export const NotificationProvider: React.FC<NotificationProviderProps> = ({ children, userId, onUserUpdated }) => {
   const [wsState, dispatch] = useReducer(notificationReducer, initialState);
   
   // Use React Query for data fetching
@@ -149,6 +150,12 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
               dispatch({ type: 'ADD_NOTIFICATION', payload: message.data });
             } else if (message.type === 'auth_success') {
               console.log('WebSocket authenticated successfully');
+            } else if (message.type === 'user_updated') {
+              console.log('User data updated via WebSocket:', message.message);
+              // Trigger user data refetch
+              if (onUserUpdated) {
+                onUserUpdated();
+              }
             }
           } catch (error) {
             console.error('Error parsing WebSocket message:', error);
