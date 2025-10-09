@@ -31,26 +31,41 @@ export const useProjects = () => {
   });
 };
 
-export const useProject = (projectId: number) => {
+export interface ProjectDetails extends Project {
+  quotes: any[];
+  members: any[];
+  changeOrders: any[];
+}
+
+export const useProject = (projectId: string | number | undefined) => {
   return useQuery({
     queryKey: ['project', projectId],
-    queryFn: async (): Promise<Project> => {
+    queryFn: async (): Promise<ProjectDetails> => {
       const response = await fetch(`/api/projects/${projectId}`, {
         credentials: 'include'
       });
 
       if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error('Project not found');
+        }
         throw new Error('HTTP error! status: ' + response.status);
       }
 
       const data = await response.json();
       if (data.success) {
-        return data.project;
+        return {
+          ...data.project,
+          quotes: data.quotes || [],
+          members: data.members || [],
+          changeOrders: data.changeOrders || []
+        };
       } else {
         throw new Error(data.error || 'Failed to fetch project');
       }
     },
     enabled: !!projectId,
+    staleTime: 1000 * 60 * 2, // 2 minutes (shorter cache for detailed view)
   });
 };
 

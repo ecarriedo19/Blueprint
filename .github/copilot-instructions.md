@@ -206,7 +206,7 @@ React Router with nested routes in `DashboardLayout.tsx`:
 ### Starting the Application
 ```bash
 # Backend + Frontend together (preferred - uses concurrently)
-npm run start  # Runs: concurrently "npm run dev" "node server.cjs"
+npm start  # Runs: concurrently "npm run dev" "node server.cjs"
 
 # Or use VS Code task (available in workspace)
 # Task: "Start Backend and Frontend" (runs as background process)
@@ -215,6 +215,48 @@ npm run start  # Runs: concurrently "npm run dev" "node server.cjs"
 node server.cjs  # Backend only (:4000)
 npm run dev      # Frontend only (:5173, separate terminal)
 ```
+
+### Task Management with Task Master AI
+Integrated `task-master-ai` for AI-driven development workflow:
+```bash
+# Initialize task management (if starting fresh)
+npx task-master-ai init
+
+# Parse PRD and generate tasks
+npx task-master-ai parse-prd scripts/prd.txt
+
+# Show next task to work on
+npx task-master-ai next
+
+# List all tasks with status
+npx task-master-ai list --with-subtasks
+
+# Mark task as complete
+npx task-master-ai set-status --id=1 --status=done
+
+# Break down complex tasks into subtasks
+npx task-master-ai expand --id=5 --num=3
+```
+
+### Testing Strategy
+E2E testing with Cypress configured for Blueprint's dual-server setup:
+```bash
+# Run E2E tests headless
+npm run test:e2e
+# or
+npm run cypress:run
+
+# Open Cypress Test Runner
+npm run cypress:open
+# or  
+npm run cy:open
+```
+
+**Cypress Configuration:**
+- Base URL: `http://localhost:5173` (Vite dev server)
+- Backend API: `http://localhost:4000` for programmatic operations
+- Tests in `cypress/e2e/` directory (.cy.js files)
+- Custom commands in `cypress/support/commands.js`
 
 ### Environment Setup
 Complete `.env` configuration (all variables shown in actual .env file):
@@ -306,10 +348,12 @@ npm run setup-supabase     # Creates knowledge table and search function
 - Session middleware: `express-session` with SQLiteStore backing
 
 ### Authentication Flow
-No explicit `requireAuth` middleware - auth is handled by:
-1. Session validation in endpoints via `req.session.userId`
-2. Frontend auth state via `useCurrentUser()` TanStack Query hook
-3. 401 responses trigger auth redirects in query error handling
+Session-based authentication with Google OAuth integration:
+1. **Google OAuth**: Handled via Firebase Auth SDK with popup-based flow
+2. **Session Management**: Express sessions stored in SQLite with `connect-sqlite3`
+3. **Frontend Auth State**: Reactive `useCurrentUser()` hook from TanStack Query
+4. **Route Protection**: 401 responses trigger automatic auth redirects
+5. **Session Persistence**: `credentials: 'include'` for cross-origin session cookies
 
 ### CORS Headers for OAuth
 ```javascript

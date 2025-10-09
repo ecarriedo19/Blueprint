@@ -643,6 +643,19 @@ db.serialize(() => {
     FOREIGN KEY (userId) REFERENCES users (id) ON DELETE CASCADE
   )`);
 
+  // Create quickbooks_tokens table for secure OAuth token storage
+  db.run(`CREATE TABLE IF NOT EXISTS quickbooks_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL UNIQUE,
+    access_token TEXT NOT NULL,
+    refresh_token TEXT NOT NULL,
+    realm_id TEXT NOT NULL,
+    expires_at DATETIME NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+  )`);
+
   console.log('Database tables created/updated successfully');
 });
 
@@ -1931,6 +1944,95 @@ app.post('/api/projects', checkPermission(['Admin', 'Member']), (req, res) => {
         message: 'Project created successfully',
         project: newProject 
       });
+    }
+  );
+});
+
+// Get single project with related data for the authenticated user
+app.get('/api/projects/:projectId', requireAuth, (req, res) => {
+  const userId = req.session.userId;
+  const { projectId } = req.params;
+  
+  // First, get the project details
+  db.get(
+    'SELECT id, name, budget, status, description, created_at, updated_at FROM projects WHERE id = ? AND user_id = ?',
+    [projectId, userId],
+    (err, project) => {
+      if (err) {
+        console.error('Database error fetching project:', err);
+        return res.status(500).json({ error: 'Failed to fetch project' });
+      }
+      
+      if (!project) {
+        return res.status(404).json({ error: 'Project not found' });
+      }
+      
+      // Extract priority from description
+      let description = project.description || '';
+      let priority = 'medium';
+      const priorityMatch = description.match(/\[Priority: (low|medium|high|urgent)\]/);
+      if (priorityMatch) {
+        priority = priorityMatch[1];
+        description = description.replace(/\s*\[Priority: (low|medium|high|urgent)\]/, '').trim();
+      }
+      
+      // Format the project data
+      const projectData = {
+        id: project.id,
+        name: project.name,
+        budget: project.budget,
+        status: project.status,
+        priority: priority,
+        description: description,
+        created_at: new Date(project.created_at).toISOString(),
+        updated_at: new Date(project.updated_at || project.created_at).toISOString()
+      };
+      
+      // Get related quotes for this project
+      db.all(
+        'SELECT id, quoteName, status, quoteTotal, created_at FROM quotes WHERE user_id = ? ORDER BY created_at DESC',
+        [userId],
+        (err, quotes) => {
+          if (err) {
+            console.error('Database error fetching quotes:', err);
+            quotes = [];
+          }
+          
+          // Get project members (if project_members table exists)
+          db.all(
+            'SELECT u.id, u.name, u.email, u.role FROM users u INNER JOIN project_members pm ON u.id = pm.user_id WHERE pm.project_id = ?',
+            [projectId],
+            (err, members) => {
+              if (err) {
+                // If project_members table doesn't exist, just return empty array
+                members = [];
+              }
+              
+              // Get change orders related to quotes for this project (simplified approach)
+              db.all(
+                'SELECT co.id, co.description, co.amount, co.status, co.created_at, q.quoteName FROM change_orders co INNER JOIN quotes q ON co.quote_id = q.id WHERE q.user_id = ? ORDER BY co.created_at DESC LIMIT 10',
+                [userId],
+                (err, changeOrders) => {
+                  if (err) {
+                    console.error('Database error fetching change orders:', err);
+                    changeOrders = [];
+                  }
+                  
+                  console.log(`📋 Fetched project ${projectId} with ${quotes.length} quotes, ${members.length} members, ${changeOrders.length} change orders`);
+                  
+                  res.json({
+                    success: true,
+                    project: projectData,
+                    quotes: quotes || [],
+                    members: members || [],
+                    changeOrders: changeOrders || []
+                  });
+                }
+              );
+            }
+          );
+        }
+      );
     }
   );
 });
@@ -6125,6 +6227,374 @@ app.post('/api/users-legacy', (req, res) => {
     function (err) {
       if (err) return res.status(500).json({ error: err.message });
       res.json({ success: true });
+    }
+  );
+});
+
+// QuickBooks Integration API Endpoints
+
+// Initialize QuickBooks OAuth configuration
+const QUICKBOOKS_CLIENT_ID = process.env.QUICKBOOKS_CLIENT_ID;
+const QUICKBOOKS_CLIENT_SECRET = process.env.QUICKBOOKS_CLIENT_SECRET;
+const QUICKBOOKS_REDIRECT_URI = process.env.QUICKBOOKS_REDIRECT_URI || 'http://localhost:4000/api/integrations/quickbooks/callback';
+const QUICKBOOKS_SCOPE = 'com.intuit.quickbooks.accounting';
+
+if (QUICKBOOKS_CLIENT_ID && QUICKBOOKS_CLIENT_SECRET) {
+  console.log('✅ QuickBooks OAuth credentials configured');
+} else {
+  console.warn('⚠️  QuickBooks credentials not configured - integration features will be disabled');
+}
+
+// Helper function to encrypt tokens
+function encryptToken(token) {
+  const algorithm = 'aes-256-gcm';
+  const secretKey = process.env.ENCRYPTION_KEY || 'default-key-change-in-production-please!';
+  const key = crypto.scryptSync(secretKey, 'salt', 32);
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipher(algorithm, key);
+  cipher.setAAD(Buffer.from('quickbooks-token'));
+  
+  let encrypted = cipher.update(token, 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+  const authTag = cipher.getAuthTag();
+  
+  return {
+    encrypted,
+    iv: iv.toString('hex'),
+    authTag: authTag.toString('hex')
+  };
+}
+
+// Helper function to decrypt tokens
+function decryptToken(encryptedData) {
+  const algorithm = 'aes-256-gcm';
+  const secretKey = process.env.ENCRYPTION_KEY || 'default-key-change-in-production-please!';
+  const key = crypto.scryptSync(secretKey, 'salt', 32);
+  
+  const decipher = crypto.createDecipher(algorithm, key);
+  decipher.setAAD(Buffer.from('quickbooks-token'));
+  decipher.setAuthTag(Buffer.from(encryptedData.authTag, 'hex'));
+  
+  let decrypted = decipher.update(encryptedData.encrypted, 'hex', 'utf8');
+  decrypted += decipher.final('utf8');
+  
+  return decrypted;
+}
+
+// Get integration status
+app.get('/api/integrations/status', requireAuth, (req, res) => {
+  const userId = req.session.userId;
+  
+  db.get(
+    'SELECT realm_id, expires_at FROM quickbooks_tokens WHERE user_id = ?',
+    [userId],
+    (err, row) => {
+      if (err) {
+        console.error('Database error checking QuickBooks status:', err);
+        return res.status(500).json({ error: 'Failed to check integration status' });
+      }
+      
+      const isConnected = !!row;
+      const isExpired = row ? new Date(row.expires_at) < new Date() : false;
+      
+      res.json({
+        success: true,
+        integrations: {
+          quickbooks: {
+            connected: isConnected && !isExpired,
+            realmId: row?.realm_id || null,
+            expired: isExpired
+          }
+        }
+      });
+    }
+  );
+});
+
+// Initiate QuickBooks OAuth flow
+app.get('/api/integrations/quickbooks/connect', requireAuth, (req, res) => {
+  if (!QUICKBOOKS_CLIENT_ID || !QUICKBOOKS_CLIENT_SECRET) {
+    return res.status(500).json({ error: 'QuickBooks integration not configured' });
+  }
+  
+  const userId = req.session.userId;
+  const state = crypto.randomBytes(32).toString('hex');
+  
+  // Store state in session for validation
+  req.session.qbOAuthState = state;
+  req.session.qbUserId = userId;
+  
+  const oauthUrl = `https://appcenter.intuit.com/connect/oauth2?` +
+    `client_id=${QUICKBOOKS_CLIENT_ID}&` +
+    `scope=${encodeURIComponent(QUICKBOOKS_SCOPE)}&` +
+    `redirect_uri=${encodeURIComponent(QUICKBOOKS_REDIRECT_URI)}&` +
+    `response_type=code&` +
+    `access_type=offline&` +
+    `state=${state}`;
+  
+  console.log(`🔗 Redirecting user ${userId} to QuickBooks OAuth: ${oauthUrl}`);
+  res.redirect(oauthUrl);
+});
+
+// Helper function to handle OAuth redirects (popup or normal)
+const handleOAuthRedirect = (res, success, message) => {
+  const html = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>QuickBooks OAuth ${success ? 'Success' : 'Error'}</title>
+      </head>
+      <body>
+        <script>
+          if (window.opener) {
+            // If opened in popup, notify parent and close
+            window.opener.postMessage({ 
+              type: 'quickbooks_oauth_${success ? 'success' : 'error'}',
+              message: '${message}'
+            }, '*');
+            window.close();
+          } else {
+            // If opened in same tab, redirect normally
+            window.location.href = '/integrations?${success ? 'success=connected' : `error=${message}`}';
+          }
+        </script>
+        <p>${success ? 'QuickBooks connected successfully!' : 'OAuth error occurred.'} This window will close automatically.</p>
+      </body>
+    </html>
+  `;
+  res.send(html);
+};
+
+// Handle QuickBooks OAuth callback
+app.get('/api/integrations/quickbooks/callback', (req, res) => {
+  const { code, state, realmId, error } = req.query;
+  
+  if (error) {
+    console.error('QuickBooks OAuth error:', error);
+    return handleOAuthRedirect(res, false, 'oauth_denied');
+  }
+  
+  if (!code || !state || !realmId) {
+    console.error('Missing required OAuth parameters');
+    return handleOAuthRedirect(res, false, 'invalid_callback');
+  }
+  
+  // Validate state parameter
+  if (state !== req.session.qbOAuthState) {
+    console.error('Invalid OAuth state parameter');
+    return handleOAuthRedirect(res, false, 'invalid_state');
+  }
+  
+  const userId = req.session.qbUserId;
+  if (!userId) {
+    console.error('No user ID in session');
+    return handleOAuthRedirect(res, false, 'session_expired');
+  }
+  
+  // Exchange code for tokens using OAuth 2.0
+  const tokenEndpoint = 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer';
+  const auth = Buffer.from(`${QUICKBOOKS_CLIENT_ID}:${QUICKBOOKS_CLIENT_SECRET}`).toString('base64');
+  
+  const tokenParams = new URLSearchParams({
+    grant_type: 'authorization_code',
+    code: code,
+    redirect_uri: QUICKBOOKS_REDIRECT_URI
+  });
+  
+  https.request(tokenEndpoint, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Basic ${auth}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Content-Length': Buffer.byteLength(tokenParams.toString())
+    }
+  }, (tokenRes) => {
+    let tokenData = '';
+    tokenRes.on('data', (chunk) => tokenData += chunk);
+    tokenRes.on('end', () => {
+      try {
+        const tokenResponse = JSON.parse(tokenData);
+        
+        if (tokenResponse.error) {
+          console.error('QuickBooks token exchange error:', tokenResponse);
+          return handleOAuthRedirect(res, false, 'token_exchange_failed');
+        }
+        
+        // Calculate expiration time
+        const expiresAt = new Date();
+        expiresAt.setSeconds(expiresAt.getSeconds() + tokenResponse.expires_in);
+        
+        // Encrypt tokens before storage
+        const encryptedAccessToken = encryptToken(tokenResponse.access_token);
+        const encryptedRefreshToken = encryptToken(tokenResponse.refresh_token);
+        
+        // Store tokens in database
+        db.run(
+          `INSERT OR REPLACE INTO quickbooks_tokens 
+           (user_id, access_token, refresh_token, realm_id, expires_at, updated_at) 
+           VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+          [
+            userId,
+            JSON.stringify(encryptedAccessToken),
+            JSON.stringify(encryptedRefreshToken),
+            realmId,
+            expiresAt.toISOString()
+          ],
+          function(err) {
+            if (err) {
+              console.error('Database error storing QuickBooks tokens:', err);
+              return handleOAuthRedirect(res, false, 'storage_failed');
+            }
+            
+            console.log(`✅ QuickBooks tokens stored for user ${userId}, realm ${realmId}`);
+            
+            // Clean up session
+            delete req.session.qbOAuthState;
+            delete req.session.qbUserId;
+            
+            // Create notification
+            createNotification(userId, 'QuickBooks integration connected successfully');
+            
+            handleOAuthRedirect(res, true, 'connected');
+          }
+        );
+        
+      } catch (parseErr) {
+        console.error('Error parsing token response:', parseErr);
+        handleOAuthRedirect(res, false, 'token_exchange_failed');
+      }
+    });
+  }).on('error', (err) => {
+    console.error('Token request error:', err);
+    handleOAuthRedirect(res, false, 'token_exchange_failed');
+  }).end(tokenParams.toString());
+});
+
+// Sync data from QuickBooks
+app.post('/api/integrations/quickbooks/sync', requireAuth, async (req, res) => {
+  const userId = req.session.userId;
+  
+  try {
+    // Get stored tokens
+    db.get(
+      'SELECT access_token, refresh_token, realm_id, expires_at FROM quickbooks_tokens WHERE user_id = ?',
+      [userId],
+      async (err, row) => {
+        if (err) {
+          console.error('Database error retrieving QuickBooks tokens:', err);
+          return res.status(500).json({ error: 'Failed to retrieve integration credentials' });
+        }
+        
+        if (!row) {
+          return res.status(404).json({ error: 'QuickBooks integration not found' });
+        }
+        
+        // Check if token is expired
+        if (new Date(row.expires_at) < new Date()) {
+          return res.status(401).json({ error: 'QuickBooks token expired', expired: true });
+        }
+        
+        try {
+          // Decrypt tokens
+          const accessTokenData = JSON.parse(row.access_token);
+          const accessToken = decryptToken(accessTokenData);
+          
+          // Make API call to QuickBooks using REST API
+          const baseUrl = process.env.NODE_ENV === 'production' 
+            ? 'https://quickbooks-api.intuit.com' 
+            : 'https://sandbox-quickbooks.intuit.com';
+          
+          const url = `${baseUrl}/v3/company/${row.realm_id}/query?query=SELECT * FROM Purchase MAXRESULTS 100`;
+          const options = {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+              'Accept': 'application/json'
+            }
+          };
+          
+          https.get(url, options, (apiRes) => {
+            let data = '';
+            apiRes.on('data', (chunk) => data += chunk);
+            apiRes.on('end', () => {
+              try {
+                const response = JSON.parse(data);
+                
+                if (response.Fault) {
+                  console.error('QuickBooks API error:', response.Fault);
+                  return res.status(500).json({ error: 'Failed to fetch data from QuickBooks' });
+                }
+                
+                // Transform QuickBooks data for Blueprint format
+                const expenses = response.QueryResponse?.Purchase?.map(purchase => ({
+                  id: purchase.Id,
+                  date: purchase.TxnDate,
+                  amount: purchase.TotalAmt,
+                  description: purchase.PrivateNote || 'QuickBooks Purchase',
+                  vendor: purchase.EntityRef?.name || 'Unknown Vendor',
+                  account: purchase.AccountRef?.name || 'Unknown Account',
+                  source: 'quickbooks'
+                })) || [];
+                
+                console.log(`📊 Retrieved ${expenses.length} expenses from QuickBooks for user ${userId}`);
+                
+                // Create notification
+                createNotification(userId, `Synced ${expenses.length} expenses from QuickBooks`);
+                
+                res.json({
+                  success: true,
+                  data: {
+                    expenses,
+                    syncedAt: new Date().toISOString(),
+                    source: 'quickbooks'
+                  }
+                });
+                
+              } catch (parseErr) {
+                console.error('Error parsing QuickBooks response:', parseErr);
+                res.status(500).json({ error: 'Failed to process QuickBooks data' });
+              }
+            });
+          }).on('error', (err) => {
+            console.error('QuickBooks API request error:', err);
+            res.status(500).json({ error: 'Failed to connect to QuickBooks API' });
+          });
+          
+        } catch (decryptError) {
+          console.error('Token decryption error:', decryptError);
+          return res.status(500).json({ error: 'Failed to decrypt integration credentials' });
+        }
+      }
+    );
+    
+  } catch (error) {
+    console.error('QuickBooks sync error:', error);
+    res.status(500).json({ error: 'Failed to sync QuickBooks data' });
+  }
+});
+
+// Disconnect QuickBooks integration
+app.delete('/api/integrations/quickbooks/disconnect', requireAuth, (req, res) => {
+  const userId = req.session.userId;
+  
+  db.run(
+    'DELETE FROM quickbooks_tokens WHERE user_id = ?',
+    [userId],
+    function(err) {
+      if (err) {
+        console.error('Database error disconnecting QuickBooks:', err);
+        return res.status(500).json({ error: 'Failed to disconnect QuickBooks integration' });
+      }
+      
+      console.log(`🔌 QuickBooks integration disconnected for user ${userId}`);
+      
+      // Create notification
+      createNotification(userId, 'QuickBooks integration disconnected');
+      
+      res.json({
+        success: true,
+        message: 'QuickBooks integration disconnected successfully'
+      });
     }
   );
 });

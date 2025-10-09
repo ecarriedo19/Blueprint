@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useProjects } from '../utils/queries';
 import { useProjects as useProjectMutations } from '../contexts/ProjectState';
 import Card from './Card';
@@ -342,11 +343,15 @@ const ProjectsPage: React.FC<ProjectsPageProps> = ({ currentUser }) => {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredProjects.map(project => (
-            <ProjectCard
+            <Link
               key={project.id}
-              project={project}
-              onUpdate={handleUpdateProject}
-            />
+              to={`/projects/${project.id}`}
+            >
+              <ProjectCard
+                project={project}
+                onUpdate={handleUpdateProject}
+              />
+            </Link>
           ))}
         </div>
       )}

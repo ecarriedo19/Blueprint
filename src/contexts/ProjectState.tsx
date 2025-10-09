@@ -7,6 +7,7 @@ export interface Project {
   description: string;
   status: string;
   priority: string;
+  budget?: number;
   created_at: string;
   updated_at: string;
 }
