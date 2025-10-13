@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Button from './Button';
 import Card from './Card';
 import { useQuotes, Quote } from '../contexts/QuoteContext';
+import { useProjects } from '../utils/queries';
 
 interface QuoteModalProps {
   isOpen: boolean;
@@ -12,6 +13,7 @@ interface QuoteModalProps {
 
 const QuoteModal: React.FC<QuoteModalProps> = ({ isOpen, onClose, onSuccess, quoteToEdit }) => {
   const { addQuote, updateQuote } = useQuotes();
+  const { data: projects = [] } = useProjects(); // Fetch available projects for dropdown
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     quoteName: '',
@@ -21,7 +23,8 @@ const QuoteModal: React.FC<QuoteModalProps> = ({ isOpen, onClose, onSuccess, quo
     timeToDevelopUnit: 'weeks', // Use lowercase for consistency
     variancePercentage: 0,
     quoteTotal: 0,
-    budget: 0
+    budget: 0,
+    project_id: null as number | null // Project linking field
   });
 
   // Reset form when modal opens - populate with edit data if available
@@ -51,7 +54,8 @@ const QuoteModal: React.FC<QuoteModalProps> = ({ isOpen, onClose, onSuccess, quo
           timeToDevelopUnit: parsedUnit,
           variancePercentage: quoteToEdit.variancePercentage,
           quoteTotal: quoteToEdit.quoteTotal,
-          budget: quoteToEdit.budget
+          budget: quoteToEdit.budget,
+          project_id: (quoteToEdit as any).project_id || null // Handle existing quotes that might have project_id
         });
       } else {
         // Create mode - reset to defaults
@@ -63,7 +67,8 @@ const QuoteModal: React.FC<QuoteModalProps> = ({ isOpen, onClose, onSuccess, quo
           timeToDevelopUnit: 'Weeks',
           variancePercentage: 0,
           quoteTotal: 0,
-          budget: 0
+          budget: 0,
+          project_id: null
         });
       }
     }
@@ -113,7 +118,7 @@ const QuoteModal: React.FC<QuoteModalProps> = ({ isOpen, onClose, onSuccess, quo
   };
 
   // Handle form field changes
-  const handleInputChange = (field: string, value: string | number) => {
+  const handleInputChange = (field: string, value: string | number | null) => {
     setFormData(prev => ({
       ...prev,
       [field]: value
@@ -196,6 +201,28 @@ const QuoteModal: React.FC<QuoteModalProps> = ({ isOpen, onClose, onSuccess, quo
                 placeholder="e.g., Downtown Office Building Renovation"
                 required
               />
+            </div>
+
+            {/* Project Selection */}
+            <div>
+              <label className="block text-sm font-semibold text-slate-300 mb-3">
+                Link to Project (Optional)
+              </label>
+              <select
+                value={formData.project_id || ''}
+                onChange={(e) => handleInputChange('project_id', e.target.value ? parseInt(e.target.value) : null)}
+                className="w-full px-4 py-4 bg-slate-800/50 border border-slate-600/50 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+              >
+                <option value="">No Project (Standalone Quote)</option>
+                {projects.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.name} ({project.status})
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-slate-400 mt-2">
+                Link this quote to a project to track it in the Project Command Center
+              </p>
             </div>
 
             {/* Two Column Layout */}

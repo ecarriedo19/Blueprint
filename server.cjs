@@ -431,12 +431,16 @@ db.serialize(() => {
     const columnNames = columns.map(col => col.name);
     const requiredColumns = [
       { name: 'quoteName', type: 'TEXT' },
+      { name: 'clientName', type: 'TEXT' },
+      { name: 'clientEmail', type: 'TEXT' },
       { name: 'timeToDevelop', type: 'TEXT' }, // Keep for backward compatibility
       { name: 'timeToDevelopValue', type: 'INTEGER DEFAULT 0' },
       { name: 'timeToDevelopUnit', type: 'TEXT DEFAULT "Weeks"' },
       { name: 'variancePercentage', type: 'REAL DEFAULT 0' },
       { name: 'quoteTotal', type: 'REAL DEFAULT 0' },
       { name: 'budget', type: 'REAL DEFAULT 0' },
+      { name: 'project_id', type: 'INTEGER REFERENCES projects(id)' },
+      { name: 'description', type: 'TEXT' },
       { name: 'updated_at', type: 'DATETIME' }
     ];
     
@@ -655,6 +659,139 @@ db.serialize(() => {
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
   )`);
+
+  // === CORE DATA RELATIONSHIPS SCHEMA MODIFICATIONS ===
+  
+  // Add total_budget column to projects table
+  db.all("PRAGMA table_info(projects)", (err, columns) => {
+    if (err) {
+      console.error('Error checking projects table schema:', err);
+      return;
+    }
+    
+    const hasTotalBudget = columns.some(col => col.name === 'total_budget');
+    if (!hasTotalBudget) {
+      db.run(`ALTER TABLE projects ADD COLUMN total_budget REAL DEFAULT 0`, (err) => {
+        if (err) {
+          console.error('Error adding total_budget column:', err);
+        } else {
+          console.log('✅ total_budget column added to projects table');
+        }
+      });
+    } else {
+      console.log('✅ total_budget column already exists in projects table');
+    }
+  });
+
+  // Add project_id foreign key to quotes table
+  db.all("PRAGMA table_info(quotes)", (err, columns) => {
+    if (err) {
+      console.error('Error checking quotes table schema:', err);
+      return;
+    }
+    
+    const hasProjectId = columns.some(col => col.name === 'project_id');
+    if (!hasProjectId) {
+      db.run(`ALTER TABLE quotes ADD COLUMN project_id INTEGER REFERENCES projects(id)`, (err) => {
+        if (err) {
+          console.error('Error adding project_id column to quotes:', err);
+        } else {
+          console.log('✅ project_id foreign key added to quotes table');
+        }
+      });
+    } else {
+      console.log('✅ project_id foreign key already exists in quotes table');
+    }
+  });
+
+  // Add project_id foreign key to line_items table
+  db.all("PRAGMA table_info(line_items)", (err, columns) => {
+    if (err) {
+      console.error('Error checking line_items table schema:', err);
+      return;
+    }
+    
+    const hasProjectId = columns.some(col => col.name === 'project_id');
+    if (!hasProjectId) {
+      db.run(`ALTER TABLE line_items ADD COLUMN project_id INTEGER REFERENCES projects(id)`, (err) => {
+        if (err) {
+          console.error('Error adding project_id column to line_items:', err);
+        } else {
+          console.log('✅ project_id foreign key added to line_items table');
+        }
+      });
+    } else {
+      console.log('✅ project_id foreign key already exists in line_items table');
+    }
+  });
+
+  // Add project_id foreign key to change_orders table
+  db.all("PRAGMA table_info(change_orders)", (err, columns) => {
+    if (err) {
+      console.error('Error checking change_orders table schema:', err);
+      return;
+    }
+    
+    const hasProjectId = columns.some(col => col.name === 'project_id');
+    if (!hasProjectId) {
+      db.run(`ALTER TABLE change_orders ADD COLUMN project_id INTEGER REFERENCES projects(id)`, (err) => {
+        if (err) {
+          console.error('Error adding project_id column to change_orders:', err);
+        } else {
+          console.log('✅ project_id foreign key added to change_orders table');
+        }
+      });
+    } else {
+      console.log('✅ project_id foreign key already exists in change_orders table');
+    }
+  });
+
+  // Add consistent quote_id column to change_orders table (for API consistency)
+  db.all("PRAGMA table_info(change_orders)", (err, columns) => {
+    if (err) {
+      console.error('Error checking change_orders table schema for quote_id:', err);
+      return;
+    }
+    
+    const hasQuoteId = columns.some(col => col.name === 'quote_id');
+    if (!hasQuoteId) {
+      db.run(`ALTER TABLE change_orders ADD COLUMN quote_id INTEGER REFERENCES quotes(id)`, (err) => {
+        if (err) {
+          console.error('Error adding quote_id column to change_orders:', err);
+        } else {
+          console.log('✅ quote_id foreign key added to change_orders table');
+          // Copy data from quoteId to quote_id for consistency
+          db.run(`UPDATE change_orders SET quote_id = quoteId WHERE quote_id IS NULL`, (err) => {
+            if (err) {
+              console.error('Error migrating quoteId to quote_id:', err);
+            } else {
+              console.log('✅ Migrated existing quoteId data to quote_id column');
+            }
+          });
+        }
+      });
+    } else {
+      console.log('✅ quote_id foreign key already exists in change_orders table');
+    }
+  });
+
+  // Ensure project_members table exists with proper structure
+  db.run(`CREATE TABLE IF NOT EXISTS project_members (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    role TEXT DEFAULT 'Member',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(project_id, user_id)
+  )`, (err) => {
+    if (err) {
+      console.error('Error creating project_members table:', err);
+    } else {
+      console.log('✅ project_members table created/verified');
+    }
+  });
 
   console.log('Database tables created/updated successfully');
 });
@@ -1055,6 +1192,31 @@ app.get('/api/me', requireAuth, (req, res) => {
         user.subscriptionStatus = 'free';
       }
       res.json(user);
+    }
+  );
+});
+
+// Get all users (Admin only - for team member assignment)
+app.get('/api/users', checkPermission(['Admin']), (req, res) => {
+  console.log('👥 GET /api/users - Fetching all users for user:', req.session.userId);
+  
+  db.all(
+    'SELECT id, name, email, role, profilePictureUrl FROM users ORDER BY name ASC',
+    [],
+    (err, users) => {
+      if (err) {
+        console.error('❌ Database error fetching users:', err);
+        return res.status(500).json({ 
+          success: false, 
+          error: 'Failed to fetch users' 
+        });
+      }
+
+      console.log(`✅ Retrieved ${users.length} users`);
+      res.json({
+        success: true,
+        users: users || []
+      });
     }
   );
 });
@@ -1948,14 +2110,14 @@ app.post('/api/projects', checkPermission(['Admin', 'Member']), (req, res) => {
   );
 });
 
-// Get single project with related data for the authenticated user
+// Get single project with related data for the authenticated user (PROJECT COMMAND CENTER)
 app.get('/api/projects/:projectId', requireAuth, (req, res) => {
   const userId = req.session.userId;
   const { projectId } = req.params;
   
-  // First, get the project details
+  // First, get the project details including total_budget
   db.get(
-    'SELECT id, name, budget, status, description, created_at, updated_at FROM projects WHERE id = ? AND user_id = ?',
+    'SELECT id, name, budget, status, description, total_budget, created_at, updated_at FROM projects WHERE id = ? AND user_id = ?',
     [projectId, userId],
     (err, project) => {
       if (err) {
@@ -1981,6 +2143,7 @@ app.get('/api/projects/:projectId', requireAuth, (req, res) => {
         id: project.id,
         name: project.name,
         budget: project.budget,
+        total_budget: project.total_budget || 0,
         status: project.status,
         priority: priority,
         description: description,
@@ -1988,44 +2151,68 @@ app.get('/api/projects/:projectId', requireAuth, (req, res) => {
         updated_at: new Date(project.updated_at || project.created_at).toISOString()
       };
       
-      // Get related quotes for this project
+      // Get PROJECT-SPECIFIC quotes (only quotes linked to this project)
+      console.log(`🔍 Fetching quotes for project ${projectId}, user ${userId}`);
       db.all(
-        'SELECT id, quoteName, status, quoteTotal, created_at FROM quotes WHERE user_id = ? ORDER BY created_at DESC',
-        [userId],
+        'SELECT id, quoteName, status, quoteTotal, project_id, created_at FROM quotes WHERE project_id = ? AND user_id = ? ORDER BY created_at DESC',
+        [projectId, userId],
         (err, quotes) => {
           if (err) {
-            console.error('Database error fetching quotes:', err);
+            console.error('Database error fetching project quotes:', err);
             quotes = [];
+          } else {
+            console.log(`📊 Found ${quotes.length} quotes for project ${projectId}:`, quotes.map(q => ({ id: q.id, name: q.quoteName, project_id: q.project_id, total: q.quoteTotal })));
           }
           
-          // Get project members (if project_members table exists)
+          // Calculate project-specific KPIs
+          const totalQuotes = quotes.length;
+          const quoteValue = quotes.reduce((sum, quote) => sum + (quote.quoteTotal || 0), 0);
+          const completedQuotes = quotes.filter(quote => quote.status === 'Completed').length;
+          const committedBudget = quotes
+            .filter(quote => quote.status && quote.status.toLowerCase() === 'approved')
+            .reduce((sum, quote) => sum + (quote.quoteTotal || 0), 0);
+          
+          // Get project members (using correct column names)
           db.all(
-            'SELECT u.id, u.name, u.email, u.role FROM users u INNER JOIN project_members pm ON u.id = pm.user_id WHERE pm.project_id = ?',
+            'SELECT u.id, u.name, u.email, u.role FROM users u INNER JOIN project_members pm ON u.id = pm.userId WHERE pm.projectId = ?',
             [projectId],
             (err, members) => {
               if (err) {
-                // If project_members table doesn't exist, just return empty array
+                console.error('Database error fetching project members:', err);
                 members = [];
+              } else {
+                console.log(`👥 Found ${members.length} members for project ${projectId}:`, members.map(m => ({ id: m.id, name: m.name, email: m.email })));
               }
               
-              // Get change orders related to quotes for this project (simplified approach)
+              // Get PROJECT-SPECIFIC change orders (via quotes linked to this project)
               db.all(
-                'SELECT co.id, co.description, co.amount, co.status, co.created_at, q.quoteName FROM change_orders co INNER JOIN quotes q ON co.quote_id = q.id WHERE q.user_id = ? ORDER BY co.created_at DESC LIMIT 10',
-                [userId],
+                'SELECT co.id, co.description, co.amount, co.status, co.created_at, q.quoteName, q.id as quoteId FROM change_orders co INNER JOIN quotes q ON (co.quote_id = q.id OR co.quoteId = q.id) WHERE q.project_id = ? AND q.user_id = ? ORDER BY co.created_at DESC LIMIT 10',
+                [projectId, userId],
                 (err, changeOrders) => {
                   if (err) {
-                    console.error('Database error fetching change orders:', err);
+                    console.error('Database error fetching project change orders:', err);
                     changeOrders = [];
                   }
                   
-                  console.log(`📋 Fetched project ${projectId} with ${quotes.length} quotes, ${members.length} members, ${changeOrders.length} change orders`);
+                  const pendingChangeOrders = changeOrders.filter(co => co.status === 'pending').length;
+                  
+                  console.log(`📋 PROJECT COMMAND CENTER: Fetched project ${projectId} with ${totalQuotes} quotes (${quoteValue}), ${members.length} members, ${changeOrders.length} change orders`);
                   
                   res.json({
                     success: true,
                     project: projectData,
                     quotes: quotes || [],
                     members: members || [],
-                    changeOrders: changeOrders || []
+                    changeOrders: changeOrders || [],
+                    // Project-specific KPIs for the Command Center
+                    kpis: {
+                      total_quotes: totalQuotes,
+                      quote_value: quoteValue,
+                      completed_quotes: completedQuotes,
+                      pending_change_orders: pendingChangeOrders,
+                      total_budget: projectData.total_budget,
+                      committed_budget: committedBudget
+                    }
                   });
                 }
               );
@@ -2041,7 +2228,7 @@ app.get('/api/projects/:projectId', requireAuth, (req, res) => {
 app.patch('/api/projects/:projectId', checkProjectAccess(['Admin', 'Member']), (req, res) => {
   const userId = req.session.userId;
   const { projectId } = req.params;
-  const { status, budget, description, priority, name } = req.body;
+  const { status, budget, description, priority, name, total_budget } = req.body;
   
   // Build dynamic query
   const updates = [];
@@ -2058,6 +2245,10 @@ app.patch('/api/projects/:projectId', checkProjectAccess(['Admin', 'Member']), (
   if (budget !== undefined) {
     updates.push('budget = ?');
     values.push(budget);
+  }
+  if (total_budget !== undefined) {
+    updates.push('total_budget = ?');
+    values.push(total_budget);
   }
   if (description !== undefined || priority !== undefined) {
     // Handle priority embedded in description
@@ -2099,7 +2290,7 @@ app.patch('/api/projects/:projectId', checkProjectAccess(['Admin', 'Member']), (
       
       // Fetch the updated project to return it
       db.get(
-        'SELECT id, name, budget, status, description, created_at, updated_at FROM projects WHERE id = ? AND user_id = ?',
+        'SELECT id, name, budget, status, description, total_budget, created_at, updated_at FROM projects WHERE id = ? AND user_id = ?',
         [projectId, userId],
         (err, project) => {
           if (err) {
@@ -2121,6 +2312,7 @@ app.patch('/api/projects/:projectId', checkProjectAccess(['Admin', 'Member']), (
             id: project.id,
             name: project.name,
             budget: project.budget,
+            total_budget: project.total_budget || 0,
             status: project.status,
             priority: responsePriority,
             description: responseDescription,
@@ -2648,20 +2840,23 @@ app.get('/api/quotes', requireAuth, (req, res) => {
   
   db.all(
     `SELECT 
-      id, 
-      quoteName, 
-      status, 
-      timeToDevelop, 
-      timeToDevelopValue,
-      timeToDevelopUnit,
-      variancePercentage, 
-      quoteTotal, 
-      budget, 
-      created_at, 
-      updated_at 
-    FROM quotes 
-    WHERE user_id = ? 
-    ORDER BY created_at DESC`,
+      q.id, 
+      q.quoteName, 
+      q.status, 
+      q.timeToDevelop, 
+      q.timeToDevelopValue,
+      q.timeToDevelopUnit,
+      q.variancePercentage, 
+      q.quoteTotal, 
+      q.budget, 
+      q.project_id,
+      q.created_at, 
+      q.updated_at,
+      p.name as project_name
+    FROM quotes q 
+    LEFT JOIN projects p ON q.project_id = p.id 
+    WHERE q.user_id = ? 
+    ORDER BY q.created_at DESC`,
     [req.session.userId],
     (err, quotes) => {
       if (err) {
@@ -2690,13 +2885,17 @@ app.post('/api/quotes', checkPermission(['Admin', 'Member']), (req, res) => {
   
   const { 
     quoteName, 
+    clientName,
+    clientEmail,
     status = 'Draft', 
     timeToDevelop = '', 
     timeToDevelopValue = 0,
     timeToDevelopUnit = 'Weeks',
     variancePercentage = 0, 
     quoteTotal = 0, 
-    budget = 0 
+    budget = 0,
+    project_id,
+    description
   } = req.body;
 
   // Validation
@@ -2711,9 +2910,14 @@ app.post('/api/quotes', checkPermission(['Admin', 'Member']), (req, res) => {
   const userId = req.session.userId;
   const now = new Date().toISOString();
 
+  console.log('🔍 Creating quote with project_id:', project_id, 'for user:', userId);
+  console.log('🔍 Quote data:', { quoteName, clientName, project_id, quoteTotal });
+
   db.run(
     `INSERT INTO quotes (
       quoteName, 
+      clientName,
+      clientEmail,
       status, 
       timeToDevelop, 
       timeToDevelopValue,
@@ -2722,11 +2926,15 @@ app.post('/api/quotes', checkPermission(['Admin', 'Member']), (req, res) => {
       quoteTotal, 
       budget, 
       user_id, 
+      project_id,
+      description,
       created_at, 
       updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       quoteName.trim(), 
+      clientName || '',
+      clientEmail || '',
       status, 
       timeToDevelop, 
       timeToDevelopValue,
@@ -2735,6 +2943,8 @@ app.post('/api/quotes', checkPermission(['Admin', 'Member']), (req, res) => {
       quoteTotal, 
       budget, 
       userId, 
+      project_id || null,
+      description || '',
       now, 
       now
     ],
@@ -2753,6 +2963,8 @@ app.post('/api/quotes', checkPermission(['Admin', 'Member']), (req, res) => {
         `SELECT 
           id, 
           quoteName, 
+          clientName,
+          clientEmail,
           status, 
           timeToDevelop, 
           timeToDevelopValue,
@@ -2760,6 +2972,8 @@ app.post('/api/quotes', checkPermission(['Admin', 'Member']), (req, res) => {
           variancePercentage, 
           quoteTotal, 
           budget, 
+          project_id,
+          description,
           created_at, 
           updated_at 
         FROM quotes 
@@ -2789,6 +3003,144 @@ app.post('/api/quotes', checkPermission(['Admin', 'Member']), (req, res) => {
       );
     }
   );
+});
+
+// Bulk update quotes (must be defined BEFORE /api/quotes/:id to avoid route conflicts)
+app.put('/api/quotes/bulk-update', checkPermission(['Admin', 'Member']), (req, res) => {
+  console.log('🔍 PUT /api/quotes/bulk-update - Request received for user:', req.session.userId);
+  console.log('Request body:', req.body);
+  
+  const { quote_ids, updates } = req.body;
+  const userId = req.session.userId;
+
+  if (!quote_ids || !Array.isArray(quote_ids) || quote_ids.length === 0) {
+    console.log('❌ Validation failed: Invalid or empty quote_ids array. Received:', quote_ids);
+    return res.status(400).json({ 
+      success: false, 
+      error: 'quote_ids must be a non-empty array. Received: ' + (quote_ids ? typeof quote_ids : 'undefined')
+    });
+  }
+
+  if (!updates || typeof updates !== 'object') {
+    console.log('❌ Validation failed: Invalid updates object');
+    return res.status(400).json({ 
+      success: false, 
+      error: 'updates must be a valid object' 
+    });
+  }
+
+  // Build update query dynamically
+  const allowedFields = ['project_id', 'status', 'quoteName', 'quoteTotal', 'budget'];
+  const updateFields = [];
+  const updateValues = [];
+  
+  for (const [key, value] of Object.entries(updates)) {
+    if (allowedFields.includes(key)) {
+      updateFields.push(`${key} = ?`);
+      updateValues.push(value);
+    }
+  }
+
+  if (updateFields.length === 0) {
+    console.log('❌ Validation failed: No valid update fields provided');
+    return res.status(400).json({ 
+      success: false, 
+      error: 'No valid update fields provided' 
+    });
+  }
+
+  // Create placeholders for quote IDs
+  const placeholders = quote_ids.map(() => '?').join(', ');
+  const queryParams = [...updateValues, ...quote_ids, userId];
+  
+  const updateQuery = `
+    UPDATE quotes 
+    SET ${updateFields.join(', ')}, updated_at = CURRENT_TIMESTAMP 
+    WHERE id IN (${placeholders}) AND user_id = ?
+  `;
+
+  console.log('Bulk update query:', updateQuery);
+  console.log('Query parameters:', queryParams);
+
+  // Execute the bulk update in a transaction
+  db.serialize(() => {
+    db.run('BEGIN TRANSACTION');
+    
+    db.run(updateQuery, queryParams, function (err) {
+      if (err) {
+        console.error('❌ Database error during bulk update:', err);
+        db.run('ROLLBACK');
+        return res.status(500).json({ 
+          success: false, 
+          error: 'Failed to bulk update quotes',
+          details: err.message 
+        });
+      }
+
+      const updatedCount = this.changes;
+      console.log(`✅ Bulk updated ${updatedCount} quotes`);
+
+      // If project_id is being updated, also update related change orders
+      if (updates.project_id !== undefined) {
+        const updateChangeOrdersQuery = `
+          UPDATE change_orders 
+          SET project_id = ? 
+          WHERE quote_id IN (${placeholders}) OR quoteId IN (${placeholders})
+        `;
+        const changeOrderParams = [updates.project_id, ...quote_ids, ...quote_ids];
+
+        db.run(updateChangeOrdersQuery, changeOrderParams, function (changeOrderErr) {
+          if (changeOrderErr) {
+            console.error('❌ Failed to update related change orders:', changeOrderErr);
+            db.run('ROLLBACK');
+            return res.status(500).json({ 
+              success: false, 
+              error: 'Failed to update related change orders',
+              details: changeOrderErr.message 
+            });
+          }
+
+          console.log(`✅ Updated ${this.changes} related change orders`);
+          
+          db.run('COMMIT', (commitErr) => {
+            if (commitErr) {
+              console.error('❌ Failed to commit transaction:', commitErr);
+              return res.status(500).json({ 
+                success: false, 
+                error: 'Failed to commit bulk update',
+                details: commitErr.message 
+              });
+            }
+
+            res.json({
+              success: true,
+              message: `Successfully updated ${updatedCount} quotes`,
+              updatedCount: updatedCount,
+              updates: updates
+            });
+          });
+        });
+      } else {
+        db.run('COMMIT', (commitErr) => {
+          if (commitErr) {
+            console.error('❌ Failed to commit transaction:', commitErr);
+            return res.status(500).json({ 
+              success: false, 
+              error: 'Failed to commit bulk update',
+              details: commitErr.message 
+            });
+          }
+
+          res.json({
+            success: true,
+            message: `Successfully updated ${updatedCount} quotes`,
+            updatedCount: updatedCount,
+            updates: updates
+          });
+        });
+      }
+    });
+  });
 });
 
 // Update an existing quote for the authenticated user (supports partial updates)
@@ -2846,7 +3198,7 @@ app.put('/api/quotes/:id', checkProjectAccess(['Admin', 'Member']), (req, res) =
       const updateFields = [];
       const updateValues = [];
       
-      // Map of allowed update fields
+      // Map of allowed update fields (including project_id for linking quotes to projects)
       const allowedFields = {
         quoteName: 'quoteName',
         status: 'status',
@@ -2855,7 +3207,8 @@ app.put('/api/quotes/:id', checkProjectAccess(['Admin', 'Member']), (req, res) =
         timeToDevelopUnit: 'timeToDevelopUnit',
         variancePercentage: 'variancePercentage',
         quoteTotal: 'quoteTotal',
-        budget: 'budget'
+        budget: 'budget',
+        project_id: 'project_id'
       };
 
       // Add fields that are being updated
@@ -2911,6 +3264,21 @@ app.put('/api/quotes/:id', checkProjectAccess(['Admin', 'Member']), (req, res) =
           });
         }
 
+        // If project_id was updated, cascade the change to all related change orders
+        if (updates.project_id !== undefined) {
+          db.run(
+            'UPDATE change_orders SET project_id = ? WHERE quote_id = ?',
+            [updates.project_id, quoteId],
+            (coErr) => {
+              if (coErr) {
+                console.error('⚠️ Warning: Failed to cascade project_id to change orders:', coErr);
+              } else {
+                console.log('✅ Cascaded project_id to related change orders');
+              }
+            }
+          );
+        }
+
         // Fetch the updated quote to return it
         db.get(
           `SELECT 
@@ -2922,7 +3290,8 @@ app.put('/api/quotes/:id', checkProjectAccess(['Admin', 'Member']), (req, res) =
             timeToDevelopUnit,
             variancePercentage, 
             quoteTotal, 
-            budget, 
+            budget,
+            project_id, 
             created_at, 
             updated_at 
           FROM quotes 
@@ -3027,6 +3396,9 @@ app.delete('/api/quotes/:id', checkProjectAccess(['Admin', 'Member']), (req, res
   );
 });
 
+// Bulk update quotes for mass editing
+
+
 // Get a single quote by ID for the authenticated user
 app.get('/api/quotes/:id', checkProjectAccess(['Admin', 'Member']), (req, res) => {
   console.log('🔍 GET /api/quotes/:id - Request received for user:', req.session.userId);
@@ -3046,7 +3418,7 @@ app.get('/api/quotes/:id', checkProjectAccess(['Admin', 'Member']), (req, res) =
   db.get(
     `SELECT 
       id, quoteName, status, timeToDevelop, timeToDevelopValue, timeToDevelopUnit,
-      variancePercentage, quoteTotal, budget, created_at, updated_at
+      variancePercentage, quoteTotal, budget, project_id, created_at, updated_at
      FROM quotes 
      WHERE id = ? AND user_id = ?`,
     [quoteId, userId],
@@ -3982,6 +4354,117 @@ app.post('/api/quotes/:quoteId/change-orders', checkPermission(['Admin', 'Member
       );
     }
   );
+});
+
+// Create a change order (general endpoint that accepts both project_id and quote_id)
+app.post('/api/change-orders', checkPermission(['Admin', 'Member']), (req, res) => {
+  console.log('📝 POST /api/change-orders - Creating change order for user:', req.session.userId);
+  
+  const userId = req.session.userId;
+  const { description, amount, status, quote_id, project_id } = req.body;
+
+  // Validation
+  if (!description || description.trim().length === 0) {
+    console.log('❌ Validation failed: Description is required');
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Description is required' 
+    });
+  }
+
+  if (amount === undefined || amount === null || isNaN(parseFloat(amount))) {
+    console.log('❌ Validation failed: Amount is required and must be a number');
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Amount is required and must be a valid number' 
+    });
+  }
+
+  if (!quote_id || isNaN(parseInt(quote_id))) {
+    console.log('❌ Validation failed: Valid quote_id is required');
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Valid quote_id is required' 
+    });
+  }
+
+  const changeOrderStatus = status || 'Pending';
+  const quoteId = parseInt(quote_id);
+
+  // Verify the quote exists and belongs to the user (and optionally matches the project)
+  let quoteQuery = 'SELECT * FROM quotes WHERE id = ? AND user_id = ?';
+  let queryParams = [quoteId, userId];
+  
+  if (project_id && !isNaN(parseInt(project_id))) {
+    quoteQuery += ' AND project_id = ?';
+    queryParams.push(parseInt(project_id));
+  }
+
+  db.get(quoteQuery, queryParams, (err, quote) => {
+    if (err) {
+      console.error('❌ Database error:', err);
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Database error while verifying quote' 
+      });
+    }
+
+    if (!quote) {
+      console.log('❌ Quote not found or access denied');
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Quote not found or you do not have permission to add change orders to it' 
+      });
+    }
+
+    // Create the change order (try with quote_id first, fallback to quoteId for compatibility)
+    db.run(
+      `INSERT INTO change_orders (description, amount, status, quote_id, quoteId, user_id) 
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [description.trim(), parseFloat(amount), changeOrderStatus, quoteId, quoteId, userId],
+      function(err) {
+        if (err) {
+          console.error('❌ Database error creating change order:', err);
+          console.error('❌ Error details:', err.message);
+          console.error('❌ Values:', [description.trim(), parseFloat(amount), changeOrderStatus, quoteId, quoteId, userId]);
+          return res.status(500).json({ 
+            success: false, 
+            error: 'Database error while creating change order: ' + err.message 
+          });
+        }
+
+        console.log('✅ Change order created with ID:', this.lastID);
+
+        // Fetch the created change order with quote details
+        db.get(
+          `SELECT co.*, q.quoteName 
+           FROM change_orders co 
+           JOIN quotes q ON co.quote_id = q.id 
+           WHERE co.id = ?`,
+          [this.lastID],
+          (err, changeOrder) => {
+            if (err) {
+              console.error('❌ Error fetching created change order:', err);
+              return res.status(500).json({ 
+                success: false, 
+                error: 'Change order created but error fetching details' 
+              });
+            }
+
+            // Create notification for change order creation
+            const notificationMessage = `New change order created: "${description.trim()}" for ${parseFloat(amount) >= 0 ? '+' : ''}$${Math.abs(parseFloat(amount)).toLocaleString()}`;
+            createNotification(userId, notificationMessage);
+
+            res.status(201).json({
+              success: true,
+              message: 'Change order created successfully',
+              data: changeOrder
+            });
+          }
+        );
+      }
+    );
+  });
 });
 
 // Update a change order (no longer affects quote total, only actual costs)

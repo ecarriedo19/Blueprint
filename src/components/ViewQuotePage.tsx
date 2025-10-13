@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useQuote, useLineItems, LineItem } from '../utils/queries';
+import { useQuote, useLineItems, useProjects, LineItem } from '../utils/queries';
 import { useQuotes as useQuoteMutations } from '../contexts/QuoteContext';
 import { useApp } from '../contexts/AppContext';
 import Card from './Card';
@@ -61,6 +61,7 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
   const quoteId = id ? parseInt(id, 10) : 0;
   const { data: quote, isLoading: loading, error } = useQuote(quoteId);
   const { data: lineItems = [], isLoading: lineItemsLoading } = useLineItems(quoteId);
+  const { data: projects = [] } = useProjects();
   const [isLineItemModalOpen, setIsLineItemModalOpen] = useState(false);
   const [lineItemToEdit, setLineItemToEdit] = useState<LineItem | null>(null);
   const [isChangeOrderModalOpen, setIsChangeOrderModalOpen] = useState(false);
@@ -69,6 +70,8 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
   const [changeOrdersLoading, setChangeOrdersLoading] = useState(false);
   const [editingQuoteTotal, setEditingQuoteTotal] = useState(false);
   const [tempQuoteTotal, setTempQuoteTotal] = useState<string>('');
+  const [editingProject, setEditingProject] = useState(false);
+  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [toast, setToast] = useState<{ message: string; isVisible: boolean; type: 'success' | 'error' }>({ 
     message: '', 
     isVisible: false, 
@@ -79,6 +82,34 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
   const canModifyQuotes = () => {
     const userRole = currentUser?.role || 'Member';
     return userRole === 'Admin' || userRole === 'Member';
+  };
+
+  // Enhanced approval permission check
+  const canApproveQuotes = () => {
+    const userRole = currentUser?.role || 'Member';
+    return userRole === 'Admin'; // Only admins can approve quotes
+  };
+
+  // Status transition validation
+  const canTransitionTo = (newStatus: string, currentStatus: string) => {
+    const status = newStatus.toLowerCase();
+    const current = currentStatus.toLowerCase();
+    
+    // Admin can make any transition
+    if (canApproveQuotes()) return true;
+    
+    // Members can only make these transitions:
+    switch (status) {
+      case 'sent':
+        return current === 'draft';
+      case 'working on it':
+      case 'in progress':
+        return current === 'approved';
+      case 'completed':
+        return current === 'working on it' || current === 'in progress';
+      default:
+        return false; // Cannot transition to other statuses without admin permissions
+    }
   };
 
   // Toast functions
@@ -97,7 +128,10 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
   // Initialize tempQuoteTotal when quote data is loaded
   useEffect(() => {
     if (quote) {
+      console.log('🔍 Quote data loaded:', quote);
+      console.log('🔍 Project ID from quote:', (quote as any).project_id);
       setTempQuoteTotal(quote.quoteTotal.toString());
+      setSelectedProjectId((quote as any).project_id || null);
     }
   }, [quote]);
 
@@ -269,16 +303,83 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
     }
   };
 
-  // Handle status updates
+  // Handle status updates with approval workflow
   const handleStatusUpdate = async (newStatus: string) => {
     if (!quote || quote.status.toLowerCase() === newStatus.toLowerCase()) return;
 
+    // Check if user can make this transition
+    if (!canTransitionTo(newStatus, quote.status)) {
+      const statusLabel = newStatus.charAt(0).toUpperCase() + newStatus.slice(1);
+      showToast(`Only administrators can set status to '${statusLabel}'`, 'error');
+      return;
+    }
+
+    // Special handling for approval status
+    if (newStatus.toLowerCase() === 'approved') {
+      showConfirmationModal({
+        title: 'Approve Quote',
+        message: `Are you sure you want to approve this quote for $${quote.quoteTotal.toLocaleString()}? This action will allow work to begin.`,
+        confirmText: 'Approve Quote',
+        cancelText: 'Cancel',
+        onConfirm: async () => {
+          try {
+            await updateQuote(quote.id, { status: newStatus });
+            showToast(`Quote approved successfully! Work can now begin.`);
+          } catch (error) {
+            console.error('Failed to approve quote:', error);
+            showToast('Failed to approve quote', 'error');
+          }
+        }
+      });
+      return;
+    }
+
+    // Special handling for rejection
+    if (newStatus.toLowerCase() === 'rejected') {
+      showConfirmationModal({
+        title: 'Reject Quote',
+        message: `Are you sure you want to reject this quote? This will require creating a new quote for any future work.`,
+        confirmText: 'Reject Quote',
+        cancelText: 'Cancel',
+        onConfirm: async () => {
+          try {
+            await updateQuote(quote.id, { status: newStatus });
+            showToast(`Quote has been rejected.`, 'error');
+          } catch (error) {
+            console.error('Failed to reject quote:', error);
+            showToast('Failed to reject quote', 'error');
+          }
+        }
+      });
+      return;
+    }
+
+    // Standard status updates
     try {
       await updateQuote(quote.id, { status: newStatus });
-      showToast(`Status updated to '${newStatus}'!`);
+      const statusLabel = newStatus.charAt(0).toUpperCase() + newStatus.slice(1);
+      showToast(`Status updated to '${statusLabel}'!`);
     } catch (error) {
       console.error('Failed to update status:', error);
       showToast('Failed to update status', 'error');
+    }
+  };
+
+  // Project Update Function
+  const handleProjectUpdate = async (newProjectId: number | null) => {
+    if (!quote || (quote as any).project_id === newProjectId) return;
+
+    try {
+      await updateQuote(quote.id, { project_id: newProjectId } as any);
+      setSelectedProjectId(newProjectId);
+      setEditingProject(false);
+      const projectName = newProjectId 
+        ? projects.find(p => p.id === newProjectId)?.name || 'Unknown Project'
+        : 'No Project';
+      showToast(`Quote linked to '${projectName}'!`);
+    } catch (error) {
+      console.error('Failed to update project:', error);
+      showToast('Failed to update project', 'error');
     }
   };
 
@@ -452,11 +553,11 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
   // Interactive Status Stepper Component
   const InteractiveStatusStepper = ({ currentStatus }: { currentStatus: string }) => {
     const steps = [
-      { key: 'draft', label: 'Draft', icon: FileText },
-      { key: 'sent', label: 'Sent', icon: Clock },
-      { key: 'approved', label: 'Approved', icon: CheckCircle },
-      { key: 'working on it', label: 'In Progress', icon: Play },
-      { key: 'completed', label: 'Completed', icon: Award }
+      { key: 'draft', label: 'Draft', icon: FileText, description: 'Quote is being prepared' },
+      { key: 'sent', label: 'Sent', icon: Clock, description: 'Waiting for client review' },
+      { key: 'approved', label: 'Approved', icon: CheckCircle, description: 'Ready to begin work', requiresAdmin: true },
+      { key: 'working on it', label: 'In Progress', icon: Play, description: 'Work is underway' },
+      { key: 'completed', label: 'Completed', icon: Award, description: 'Work is finished' }
     ];
 
     const getCurrentStepIndex = () => {
@@ -488,19 +589,27 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
             return (
               <div key={step.key} className="flex items-center">
                 <button
-                  onClick={canModifyQuotes() ? () => handleStatusUpdate(step.key) : undefined}
+                  onClick={canModifyQuotes() && canTransitionTo(step.key, currentStatus) ? () => handleStatusUpdate(step.key) : undefined}
                   className={`
-                    flex items-center justify-center w-12 h-12 rounded-full border-2 transition-all duration-300 transform hover:scale-105
-                    ${canModifyQuotes() ? 'cursor-pointer' : 'cursor-default'}
+                    flex items-center justify-center w-12 h-12 rounded-full border-2 transition-all duration-300 transform hover:scale-105 relative
+                    ${canModifyQuotes() && canTransitionTo(step.key, currentStatus) ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}
                     ${isCompleted 
                       ? 'bg-green-500/20 border-green-400 text-green-400 hover:bg-green-500/30' 
                       : isActive 
                         ? 'bg-blue-500/20 border-blue-400 text-blue-400 hover:bg-blue-500/30' 
-                        : 'bg-slate-800/50 border-slate-600 text-slate-400 hover:bg-slate-700/50 hover:border-slate-500'
+                        : canTransitionTo(step.key, currentStatus)
+                          ? 'bg-slate-800/50 border-slate-600 text-slate-400 hover:bg-slate-700/50 hover:border-slate-500'
+                          : 'bg-slate-900/50 border-slate-700 text-slate-500'
                     }
+                    ${(step as any).requiresAdmin && !canApproveQuotes() ? 'ring-2 ring-orange-500/50' : ''}
                   `}
-                  title={canModifyQuotes() ? `Set status to ${step.label}` : 'Read-only access'}
-                  disabled={!canModifyQuotes()}
+                  title={
+                    !canModifyQuotes() ? 'Read-only access' :
+                    !canTransitionTo(step.key, currentStatus) ? 
+                      ((step as any).requiresAdmin ? 'Administrator approval required' : 'Cannot transition to this status') :
+                    `Set status to ${step.label}`
+                  }
+                  disabled={!canModifyQuotes() || !canTransitionTo(step.key, currentStatus)}
                 >
                   {isCompleted ? (
                     <Check className="w-6 h-6" />
@@ -529,6 +638,36 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
           })}
         </div>
         
+        {/* Approval Actions */}
+        {currentStatus.toLowerCase() === 'sent' && canApproveQuotes() && (
+          <div className="mt-6 p-4 bg-blue-500/10 border border-blue-500/30 rounded-xl">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-blue-400 text-sm font-medium">
+                Quote ready for approval • ${quote?.quoteTotal.toLocaleString()}
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <Button
+                onClick={() => handleStatusUpdate('approved')}
+                variant="primary"
+                size="sm"
+                className="bg-green-600 hover:bg-green-700"
+              >
+                <CheckCircle className="w-4 h-4" />
+                Approve Quote
+              </Button>
+              <Button
+                onClick={() => handleStatusUpdate('rejected')}
+                variant="outline"
+                size="sm"
+                className="border-red-500/50 text-red-400 hover:bg-red-500/10"
+              >
+                Reject Quote
+              </Button>
+            </div>
+          </div>
+        )}
+
         {currentStatus.toLowerCase() === 'rejected' && (
           <div className="mt-6 p-4 bg-red-500/10 border border-red-500/30 rounded-xl">
             <p className="text-red-400 text-sm font-medium">
@@ -538,7 +677,11 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
         )}
         
         <div className="mt-4 text-xs text-slate-400">
-          Click on any step to update the status
+          {canApproveQuotes() ? (
+            'Click on any step to update the status • Admin privileges enabled'
+          ) : (
+            'Limited status changes available • Contact admin for approvals'
+          )}
         </div>
       </Card>
     );
@@ -586,17 +729,7 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
 
   return (
     <div className="space-y-6">
-      {/* Header with Back Navigation */}
-      <div className="flex items-center gap-4">
-        <Button
-          variant="ghost"
-          onClick={() => navigate('/quotes')}
-          className="flex items-center gap-2"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back to Quotes
-        </Button>
-      </div>
+
 
       {/* Minimalist Quote Header */}
       <div className="flex items-center justify-between mb-8">
@@ -621,6 +754,68 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
           Download PDF
         </Button>
       </div>
+
+      {/* Project Assignment Section */}
+      <Card variant="glass" className="p-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-white mb-2">Project Assignment</h3>
+            <p className="text-slate-400 text-sm">Link this quote to a project for better tracking</p>
+          </div>
+          {!editingProject ? (
+            <div className="flex items-center gap-3">
+              <span className="text-slate-300">
+                {selectedProjectId 
+                  ? projects.find(p => p.id === selectedProjectId)?.name || 'Unknown Project'
+                  : 'No Project Assigned'
+                }
+              </span>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setEditingProject(true)}
+                className="text-sm"
+              >
+                Change Project
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3">
+              <select
+                value={selectedProjectId || ''}
+                onChange={(e) => setSelectedProjectId(e.target.value ? parseInt(e.target.value) : null)}
+                className="px-3 py-2 bg-slate-800/50 border border-slate-600/50 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="">No Project</option>
+                {projects.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.name}
+                  </option>
+                ))}
+              </select>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => handleProjectUpdate(selectedProjectId)}
+                className="text-sm"
+              >
+                Save
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setSelectedProjectId((quote as any).project_id || null);
+                  setEditingProject(false);
+                }}
+                className="text-sm"
+              >
+                Cancel
+              </Button>
+            </div>
+          )}
+        </div>
+      </Card>
 
       {/* Dynamic KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

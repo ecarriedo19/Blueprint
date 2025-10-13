@@ -58,7 +58,8 @@ export const useProject = (projectId: string | number | undefined) => {
           ...data.project,
           quotes: data.quotes || [],
           members: data.members || [],
-          changeOrders: data.changeOrders || []
+          changeOrders: data.changeOrders || [],
+          kpis: data.kpis || {} // Include KPI data from server response
         };
       } else {
         throw new Error(data.error || 'Failed to fetch project');

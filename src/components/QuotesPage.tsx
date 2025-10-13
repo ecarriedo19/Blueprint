@@ -5,6 +5,7 @@ import Card from './Card';
 import Button from './Button';
 import QuoteModal from './QuoteModal';
 import UploadQuoteModal from './UploadQuoteModal';
+import BulkEditQuotesModal from './BulkEditQuotesModal';
 import { useQuotes } from '../utils/queries';
 import { useQuotes as useQuoteMutations, Quote } from '../contexts/QuoteContext';
 import { useApp } from '../contexts/AppContext';
@@ -29,6 +30,8 @@ const QuotesPage = ({ currentUser }: QuotesPageProps) => {
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [quoteToEdit, setQuoteToEdit] = useState<Quote | null>(null);
+  const [isBulkEditModalOpen, setIsBulkEditModalOpen] = useState(false);
+  const [selectedQuoteIds, setSelectedQuoteIds] = useState<number[]>([]);
   const [toast, setToast] = useState<{ message: string; isVisible: boolean; type: 'success' | 'error' }>({ 
     message: '', 
     isVisible: false, 
@@ -113,6 +116,30 @@ const QuotesPage = ({ currentUser }: QuotesPageProps) => {
   // Handle closing upload modal
   const handleCloseUploadModal = () => {
     setIsUploadModalOpen(false);
+  };
+
+  // Bulk edit functions
+  const handleSelectQuote = (quoteId: number, isSelected: boolean) => {
+    setSelectedQuoteIds(prev => 
+      isSelected 
+        ? [...prev, quoteId]
+        : prev.filter(id => id !== quoteId)
+    );
+  };
+
+  const handleSelectAll = (isSelected: boolean) => {
+    setSelectedQuoteIds(isSelected ? quotes.map(quote => quote.id) : []);
+  };
+
+  const handleBulkEdit = () => {
+    if (selectedQuoteIds.length > 0) {
+      setIsBulkEditModalOpen(true);
+    }
+  };
+
+  const handleCloseBulkEditModal = () => {
+    setIsBulkEditModalOpen(false);
+    setSelectedQuoteIds([]); // Clear selection when closing
   };
 
   // Close dropdown when clicking outside
@@ -235,11 +262,22 @@ const QuotesPage = ({ currentUser }: QuotesPageProps) => {
         <table className="w-full">
           <thead>
             <tr className="border-b border-slate-700/50">
+              <th className="text-center py-4 px-4 text-sm font-semibold text-slate-300 uppercase tracking-wider w-12">
+                <input
+                  type="checkbox"
+                  checked={selectedQuoteIds.length === quotes.length && quotes.length > 0}
+                  onChange={(e) => handleSelectAll(e.target.checked)}
+                  className="w-4 h-4 text-blue-600 bg-slate-700 border-slate-600 rounded focus:ring-blue-500 focus:ring-2"
+                />
+              </th>
               <th className="text-left py-4 px-4 text-sm font-semibold text-slate-300 uppercase tracking-wider">
                 Quote
               </th>
               <th className="text-left py-4 px-4 text-sm font-semibold text-slate-300 uppercase tracking-wider">
                 Status
+              </th>
+              <th className="text-left py-4 px-4 text-sm font-semibold text-slate-300 uppercase tracking-wider">
+                Related Project
               </th>
               <th className="text-left py-4 px-4 text-sm font-semibold text-slate-300 uppercase tracking-wider">
                 Time to Develop
@@ -262,13 +300,21 @@ const QuotesPage = ({ currentUser }: QuotesPageProps) => {
             {quotes.map((quote, index) => (
               <tr
                 key={quote.id}
-                onClick={() => handleViewQuote(quote)}
                 className={`
-                  group border-b border-slate-700/30 hover:bg-white/5 transition-colors duration-200 cursor-pointer
+                  group border-b border-slate-700/30 hover:bg-white/5 transition-colors duration-200
                   ${index === quotes.length - 1 ? 'border-b-0' : ''}
+                  ${selectedQuoteIds.includes(quote.id) ? 'bg-blue-500/10' : ''}
                 `}
               >
-                <td className="py-4 px-4">
+                <td className="py-4 px-4 text-center" onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    checked={selectedQuoteIds.includes(quote.id)}
+                    onChange={(e) => handleSelectQuote(quote.id, e.target.checked)}
+                    className="w-4 h-4 text-blue-600 bg-slate-700 border-slate-600 rounded focus:ring-blue-500 focus:ring-2"
+                  />
+                </td>
+                <td className="py-4 px-4 cursor-pointer" onClick={() => handleViewQuote(quote)}>
                   <div>
                     <h4 className="text-white font-medium">{quote.quoteName}</h4>
                     <p className="text-sm text-slate-400 mt-1">
@@ -284,6 +330,11 @@ const QuotesPage = ({ currentUser }: QuotesPageProps) => {
                     `}
                   >
                     {quote.status}
+                  </span>
+                </td>
+                <td className="py-4 px-4">
+                  <span className="text-slate-300">
+                    {(quote as any).project_name || 'N/A'}
                   </span>
                 </td>
                 <td className="py-4 px-4">
@@ -386,7 +437,19 @@ const QuotesPage = ({ currentUser }: QuotesPageProps) => {
       )}
 
       {quotes.length > 0 && canModifyQuotes() && (
-        <div className="flex justify-end mb-6">
+        <div className="flex justify-end gap-3 mb-6">
+          {/* Bulk Edit Button - shown when quotes are selected */}
+          {selectedQuoteIds.length > 0 && (
+            <Button
+              onClick={handleBulkEdit}
+              variant="secondary"
+              className="flex items-center gap-2"
+            >
+              <Edit3 className="w-4 h-4" />
+              Edit Selected ({selectedQuoteIds.length})
+            </Button>
+          )}
+          
           <div className="relative" ref={dropdownRef}>
             <Button
               onClick={handleDropdownToggle}
@@ -466,6 +529,14 @@ const QuotesPage = ({ currentUser }: QuotesPageProps) => {
       <UploadQuoteModal 
         isOpen={isUploadModalOpen}
         onClose={handleCloseUploadModal}
+        onSuccess={showToast}
+      />
+
+      {/* Bulk Edit Quotes Modal */}
+      <BulkEditQuotesModal 
+        isOpen={isBulkEditModalOpen}
+        onClose={handleCloseBulkEditModal}
+        selectedQuoteIds={selectedQuoteIds}
         onSuccess={showToast}
       />
     </div>
