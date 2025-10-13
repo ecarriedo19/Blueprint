@@ -3,12 +3,14 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import Card from './Card';
 import Button from './Button';
 import ThemeToggle from './ThemeToggle';
-import { Building2, CreditCard, Users2, Link, Shield, ChevronRight, Palette, Mail, Trash2, UserCheck, AlertCircle, Upload, X, Settings, CheckCircle, ExternalLink, Crown } from 'lucide-react';
+import { Building2, CreditCard, Users2, Link, Shield, ChevronRight, Palette, Mail, Trash2, UserCheck, AlertCircle, Upload, X, Settings, CheckCircle, ExternalLink, Crown, Receipt } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useApp } from '../contexts/AppContext';
 import { useTeamMembers, useSubscriptionDetails } from '../utils/queries';
 import { useTeamMutations } from '../contexts/TeamMutations';
 import ProjectAccessModal from './ProjectAccessModal';
+import CostCodesPage from './CostCodesPage';
+import { CostCodeProvider } from '../contexts/CostCodeContext';
 
 // Helper function to construct absolute URLs for images
 const getAbsoluteImageUrl = (relativePath: string | null): string | null => {
@@ -43,6 +45,12 @@ const navItems = [
     label: 'Team Members',
     icon: Users2,
     description: 'Invite and manage your team members and their permissions'
+  },
+  {
+    id: 'cost-codes',
+    label: 'Cost Codes',
+    icon: Receipt,
+    description: 'Manage CSI MasterFormat cost codes for budget tracking'
   },
   {
     id: 'integrations',
@@ -650,7 +658,7 @@ const SettingsPage = ({ companyName, updateCompanyName, currentUser }: SettingsP
   // Handle URL parameters to set initial tab
   useEffect(() => {
     const tabParam = searchParams.get('tab');
-    if (tabParam && ['profile', 'appearance', 'billing', 'team', 'integrations', 'security'].includes(tabParam)) {
+    if (tabParam && ['profile', 'appearance', 'billing', 'team', 'cost-codes', 'integrations', 'security'].includes(tabParam)) {
       setActiveTab(tabParam);
     }
   }, [searchParams]);
@@ -990,6 +998,20 @@ const SettingsPage = ({ companyName, updateCompanyName, currentUser }: SettingsP
         title: 'Team Members',
         description: 'Manage your team and their access levels.',
         content: <TeamManagementContent />
+      },
+      'cost-codes': {
+        title: 'Cost Code Library',
+        description: 'Manage your cost codes for budget vs. actuals tracking.',
+        content: (
+          <CostCodeProvider>
+            <CostCodesPage 
+              onSuccess={(message, type) => {
+                // You can show a toast notification here if needed
+                console.log(message, type);
+              }} 
+            />
+          </CostCodeProvider>
+        )
       },
       integrations: {
         title: 'Integrations',

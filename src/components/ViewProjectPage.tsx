@@ -8,6 +8,12 @@ import CreateQuoteModal from './CreateQuoteModal';
 import AssignTeamMemberModal from './AssignTeamMemberModal';
 import CreateChangeOrderModal from './CreateChangeOrderModal';
 import Toast from './Toast';
+import ActualsLedger from './ActualsLedger';
+import { ActualCostProvider } from '../contexts/ActualCostContext';
+import BudgetVsActualsReport from './BudgetVsActualsReport';
+import BaselineBudgetControls from './BaselineBudgetControls';
+import ConfirmationModal from './ConfirmationModal';
+import { useProjects as useProjectMutations } from '../contexts/ProjectState';
 import { 
   ArrowLeft, 
   DollarSign, 
@@ -17,7 +23,8 @@ import {
   AlertCircle,
   Briefcase,
   Target,
-  Activity
+  Activity,
+  Trash2
 } from 'lucide-react';
 
 const ViewProjectPage: React.FC = () => {
@@ -39,6 +46,7 @@ const ViewProjectPage: React.FC = () => {
   const [showCreateQuoteModal, setShowCreateQuoteModal] = useState(false);
   const [showAssignTeamMemberModal, setShowAssignTeamMemberModal] = useState(false);
   const [showCreateChangeOrderModal, setShowCreateChangeOrderModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   
   // Toast state
   const [toastMessage, setToastMessage] = useState<string>('');
@@ -51,6 +59,24 @@ const ViewProjectPage: React.FC = () => {
     setToastType(type);
     setShowToast(true);
     setTimeout(() => setShowToast(false), 3000);
+  };
+
+  // Project mutations
+  const { deleteProject } = useProjectMutations();
+
+  // Delete project handler
+  const handleDeleteProject = async () => {
+    try {
+      await deleteProject(projectId!);
+      handleToastMessage('Project deleted successfully', 'success');
+      setShowDeleteModal(false);
+      // Navigate to projects list after a short delay
+      setTimeout(() => navigate('/projects'), 500);
+    } catch (error) {
+      console.error('Failed to delete project:', error);
+      handleToastMessage('Failed to delete project', 'error');
+      setShowDeleteModal(false);
+    }
   };
   
   // Mutation for updating project total budget
@@ -249,6 +275,16 @@ const ViewProjectPage: React.FC = () => {
             )}
           </div>
         </div>
+        
+        {/* Delete Project Button */}
+        <Button
+          variant="danger"
+          onClick={() => setShowDeleteModal(true)}
+          className="flex items-center gap-2"
+        >
+          <Trash2 className="w-4 h-4" />
+          Delete Project
+        </Button>
       </div>
 
       {/* KPI Cards */}
@@ -598,6 +634,31 @@ const ViewProjectPage: React.FC = () => {
           )}
         </Card>
 
+        {/* Baseline Budget Controls */}
+        {projectData.budgetSummary && (
+          <BaselineBudgetControls
+            projectId={projectId!}
+            budgetSummary={projectData.budgetSummary}
+            onSuccess={handleToastMessage}
+          />
+        )}
+
+        {/* Budget vs Actuals Report */}
+        {projectData.budgetVsActuals && projectData.budgetSummary && (
+          <BudgetVsActualsReport
+            budgetVsActuals={projectData.budgetVsActuals}
+            budgetSummary={projectData.budgetSummary}
+          />
+        )}
+
+        {/* Actual Costs Ledger */}
+        <ActualCostProvider>
+          <ActualsLedger 
+            projectId={projectId!}
+            onSuccess={handleToastMessage}
+          />
+        </ActualCostProvider>
+
         {/* Project Summary */}
         <Card className="p-6">
           <div className="flex items-center justify-between mb-6">
@@ -656,6 +717,17 @@ const ViewProjectPage: React.FC = () => {
         onClose={() => setShowCreateChangeOrderModal(false)}
         projectId={projectId!}
         onSuccess={handleToastMessage}
+      />
+      
+      <ConfirmationModal
+        isOpen={showDeleteModal}
+        onCancel={() => setShowDeleteModal(false)}
+        onConfirm={handleDeleteProject}
+        title="Delete Project"
+        message={`Are you sure you want to delete "${projectData?.name}"? This action cannot be undone and will permanently delete all quotes, line items, change orders, and actual costs associated with this project.`}
+        confirmText="Yes, Delete"
+        cancelText="Cancel"
+        type="danger"
       />
 
       {/* Toast */}

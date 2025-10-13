@@ -1,0 +1,18 @@
+{
+  "watch": ["server.cjs", "scripts/modules/**/*.js"],
+  "ignore": [
+    "node_modules/**",
+    "src/**",
+    "dist/**",
+    "build/**",
+    "*.test.js",
+    "*.spec.js"
+  ],
+  "ext": "js,cjs,mjs,json",
+  "delay": "1000",
+  "verbose": true,
+  "env": {
+    "NODE_ENV": "development"
+  }
+}
+

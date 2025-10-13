@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import Button from './Button';
 import Card from './Card';
+import { useCostCodes } from '../utils/queries';
+import { Search } from 'lucide-react';
 
 interface ChangeOrder {
   id: number;
@@ -9,6 +11,7 @@ interface ChangeOrder {
   status: string;
   quoteId: number;
   user_id: number;
+  cost_code_id?: number;
   created_at: string;
   updated_at: string;
 }
@@ -29,10 +32,21 @@ const ChangeOrderModal: React.FC<ChangeOrderModalProps> = ({
   quoteId 
 }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [costCodeSearch, setCostCodeSearch] = useState('');
   const [formData, setFormData] = useState({
     description: '',
-    amount: 0
+    amount: 0,
+    cost_code_id: undefined as number | undefined
   });
+
+  // Fetch cost codes with search filter
+  const { data: allCostCodes = [], isLoading: loadingCostCodes } = useCostCodes({
+    search: costCodeSearch,
+    includeTemplates: true
+  });
+
+  // Get selected cost code for display
+  const selectedCostCode = allCostCodes.find(code => code.id === formData.cost_code_id);
 
   // Reset form when modal opens - populate with edit data if available
   useEffect(() => {
@@ -41,15 +55,18 @@ const ChangeOrderModal: React.FC<ChangeOrderModalProps> = ({
         // Edit mode - populate with existing data
         setFormData({
           description: changeOrderToEdit.description,
-          amount: changeOrderToEdit.amount
+          amount: changeOrderToEdit.amount,
+          cost_code_id: changeOrderToEdit.cost_code_id
         });
       } else {
         // Create mode - reset to defaults
         setFormData({
           description: '',
-          amount: 0
+          amount: 0,
+          cost_code_id: undefined
         });
       }
+      setCostCodeSearch(''); // Reset search when modal opens
     }
   }, [isOpen, changeOrderToEdit]);
 
@@ -67,6 +84,13 @@ const ChangeOrderModal: React.FC<ChangeOrderModalProps> = ({
     if (isNaN(formData.amount)) {
       if (onSuccess) {
         onSuccess('Amount must be a valid number', 'error');
+      }
+      return;
+    }
+
+    if (!formData.cost_code_id) {
+      if (onSuccess) {
+        onSuccess('Please select a cost code', 'error');
       }
       return;
     }
@@ -133,7 +157,7 @@ const ChangeOrderModal: React.FC<ChangeOrderModalProps> = ({
   };
 
   // Handle form field changes
-  const handleInputChange = (field: string, value: string | number) => {
+  const handleInputChange = (field: string, value: string | number | undefined) => {
     setFormData(prev => ({
       ...prev,
       [field]: value
@@ -218,6 +242,68 @@ const ChangeOrderModal: React.FC<ChangeOrderModalProps> = ({
                 />
               </div>
 
+              {/* Cost Code Selection */}
+              <div>
+                <label className="block text-sm font-semibold text-slate-300 mb-3">
+                  Cost Code *
+                </label>
+                <div className="relative">
+                  <div className="relative">
+                    <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5 pointer-events-none z-10" />
+                    <select
+                      value={formData.cost_code_id || ''}
+                      onChange={(e) => handleInputChange('cost_code_id', e.target.value ? parseInt(e.target.value) : undefined)}
+                      onFocus={() => setCostCodeSearch('')}
+                      className="w-full pl-12 pr-4 py-4 bg-slate-800/50 border border-slate-600/50 rounded-xl text-white appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 cursor-pointer"
+                      required
+                    >
+                      <option value="">Select a cost code...</option>
+                      {loadingCostCodes ? (
+                        <option disabled>Loading cost codes...</option>
+                      ) : (
+                        (() => {
+                          // Group codes by division
+                          const groupedCodes = allCostCodes.reduce((acc, code) => {
+                            const division = code.division || 'Uncategorized';
+                            if (!acc[division]) {
+                              acc[division] = [];
+                            }
+                            acc[division].push(code);
+                            return acc;
+                          }, {} as Record<string, typeof allCostCodes>);
+
+                          // Render optgroups
+                          return Object.entries(groupedCodes).map(([division, codes]) => (
+                            <optgroup key={division} label={division}>
+                              {codes.map(code => (
+                                <option key={code.id} value={code.id}>
+                                  {code.code} - {code.description}
+                                  {code.is_template ? ' (CSI Template)' : ''}
+                                </option>
+                              ))}
+                            </optgroup>
+                          ));
+                        })()
+                      )}
+                    </select>
+                  </div>
+                  {selectedCostCode && (
+                    <div className="mt-2 text-xs text-slate-400">
+                      Selected: <span className="text-blue-400 font-mono">{selectedCostCode.code}</span> - {selectedCostCode.description}
+                    </div>
+                  )}
+                </div>
+                <div className="mt-2">
+                  <input
+                    type="text"
+                    placeholder="Search cost codes..."
+                    value={costCodeSearch}
+                    onChange={(e) => setCostCodeSearch(e.target.value)}
+                    className="w-full px-4 py-2 bg-slate-800/30 border border-slate-700/50 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+                  />
+                </div>
+              </div>
+
               {/* Amount */}
               <div>
                 <label className="block text-sm font-semibold text-slate-300 mb-3">
@@ -280,7 +366,7 @@ const ChangeOrderModal: React.FC<ChangeOrderModalProps> = ({
                   type="submit"
                   variant="primary"
                   loading={isSubmitting}
-                  disabled={!formData.description.trim() || isSubmitting}
+                  disabled={!formData.description.trim() || !formData.cost_code_id || isSubmitting}
                   className="flex-1"
                 >
                   {changeOrderToEdit ? 'Update Change Order' : 'Create Change Order'}

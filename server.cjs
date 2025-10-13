@@ -24,6 +24,9 @@ require('dotenv').config();
 const app = express();
 const PORT = 4000;
 
+// Server start time for detecting restarts
+const SERVER_START_TIME = Date.now();
+
 // Create HTTP server for WebSocket integration
 const server = http.createServer(app);
 
@@ -542,6 +545,65 @@ db.serialize(() => {
     FOREIGN KEY (user_id) REFERENCES users (id)
   )`);
 
+  // Create cost_codes table for standardized cost categorization (CSI MasterFormat)
+  db.run(`CREATE TABLE IF NOT EXISTS cost_codes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT NOT NULL,
+    description TEXT NOT NULL,
+    division TEXT,
+    is_template BOOLEAN DEFAULT 0,
+    user_id INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users (id)
+  )`);
+
+  // Create indexes for cost_codes table
+  db.run(`CREATE INDEX IF NOT EXISTS idx_cost_codes_user ON cost_codes(user_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_cost_codes_template ON cost_codes(is_template)`);
+
+  // Create actual_costs table for tracking real expenses against budget
+  db.run(`CREATE TABLE IF NOT EXISTS actual_costs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL,
+    cost_code_id INTEGER NOT NULL,
+    amount REAL NOT NULL,
+    date TEXT NOT NULL,
+    description TEXT,
+    vendor_id INTEGER,
+    receipt_url TEXT,
+    created_by INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    deleted_at DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE,
+    FOREIGN KEY (cost_code_id) REFERENCES cost_codes (id),
+    FOREIGN KEY (vendor_id) REFERENCES vendors (id),
+    FOREIGN KEY (created_by) REFERENCES users (id),
+    FOREIGN KEY (user_id) REFERENCES users (id)
+  )`);
+
+  // Create indexes for actual_costs table
+  db.run(`CREATE INDEX IF NOT EXISTS idx_actual_costs_project ON actual_costs(project_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_actual_costs_code ON actual_costs(cost_code_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_actual_costs_user ON actual_costs(user_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_actual_costs_date ON actual_costs(date)`);
+
+  // Create budget_baselines table for baseline budget freezing
+  db.run(`CREATE TABLE IF NOT EXISTS budget_baselines (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL UNIQUE,
+    baseline_data TEXT NOT NULL,
+    frozen_at DATETIME NOT NULL,
+    frozen_by INTEGER NOT NULL,
+    notes TEXT,
+    user_id INTEGER NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE,
+    FOREIGN KEY (frozen_by) REFERENCES users (id),
+    FOREIGN KEY (user_id) REFERENCES users (id)
+  )`);
+
   // Insert default company profile if it doesn't exist
   db.run(`INSERT OR IGNORE INTO company_profile (id, company_name) VALUES ('default', 'Company Co')`);
 
@@ -793,6 +855,182 @@ db.serialize(() => {
     }
   });
 
+  // ===== BUDGET VS ACTUALS MIGRATIONS =====
+
+  // Migration: Add cost_code_id to line_items table
+  db.all("PRAGMA table_info(line_items)", (err, columns) => {
+    if (err) {
+      console.error('Error checking line_items table schema:', err);
+      return;
+    }
+    
+    const hasCostCodeId = columns.some(col => col.name === 'cost_code_id');
+    if (!hasCostCodeId) {
+      console.log('🔄 Adding cost_code_id column to line_items table...');
+      db.run(`ALTER TABLE line_items ADD COLUMN cost_code_id INTEGER`, (err) => {
+        if (err) {
+          console.error('Error adding cost_code_id column to line_items:', err);
+        } else {
+          console.log('✅ Added cost_code_id column to line_items table');
+          // Create index for cost_code_id
+          db.run(`CREATE INDEX IF NOT EXISTS idx_line_items_cost_code ON line_items(cost_code_id)`, (err) => {
+            if (err) {
+              console.error('Error creating index on line_items.cost_code_id:', err);
+            } else {
+              console.log('✅ Created index on line_items.cost_code_id');
+            }
+          });
+        }
+      });
+    } else {
+      console.log('✅ cost_code_id column already exists in line_items table');
+    }
+  });
+
+  // Migration: Add cost_code_id to change_orders table
+  db.all("PRAGMA table_info(change_orders)", (err, columns) => {
+    if (err) {
+      console.error('Error checking change_orders table schema:', err);
+      return;
+    }
+    
+    const hasCostCodeId = columns.some(col => col.name === 'cost_code_id');
+    if (!hasCostCodeId) {
+      console.log('🔄 Adding cost_code_id column to change_orders table...');
+      db.run(`ALTER TABLE change_orders ADD COLUMN cost_code_id INTEGER`, (err) => {
+        if (err) {
+          console.error('Error adding cost_code_id column to change_orders:', err);
+        } else {
+          console.log('✅ Added cost_code_id column to change_orders table');
+          // Create index for cost_code_id
+          db.run(`CREATE INDEX IF NOT EXISTS idx_change_orders_cost_code ON change_orders(cost_code_id)`, (err) => {
+            if (err) {
+              console.error('Error creating index on change_orders.cost_code_id:', err);
+            } else {
+              console.log('✅ Created index on change_orders.cost_code_id');
+            }
+          });
+        }
+      });
+    } else {
+      console.log('✅ cost_code_id column already exists in change_orders table');
+    }
+  });
+
+  // Migration: Seed CSI MasterFormat templates (only once)
+  db.get("SELECT COUNT(*) as count FROM cost_codes WHERE is_template = 1", (err, result) => {
+    if (err) {
+      console.error('Error checking for CSI templates:', err);
+      return;
+    }
+
+    if (result.count === 0) {
+      console.log('🔄 Seeding CSI MasterFormat templates...');
+      
+      // Load CSI MasterFormat data from file
+      const fs = require('fs');
+      const path = require('path');
+      const csiDataPath = path.join(__dirname, 'scripts', 'csi-masterformat-templates.json');
+      
+      try {
+        const csiData = JSON.parse(fs.readFileSync(csiDataPath, 'utf8'));
+        let insertedCount = 0;
+        let totalCodes = 0;
+        
+        csiData.forEach(division => {
+          totalCodes += division.codes.length;
+          division.codes.forEach(codeItem => {
+            db.run(
+              `INSERT INTO cost_codes (code, description, division, is_template, user_id) 
+               VALUES (?, ?, ?, 1, NULL)`,
+              [codeItem.code, codeItem.description, division.division],
+              (err) => {
+                if (err) {
+                  console.error(`Error inserting CSI code ${codeItem.code}:`, err);
+                } else {
+                  insertedCount++;
+                  if (insertedCount === totalCodes) {
+                    console.log(`✅ Successfully seeded ${insertedCount} CSI MasterFormat templates`);
+                  }
+                }
+              }
+            );
+          });
+        });
+      } catch (error) {
+        console.error('Error loading CSI MasterFormat templates:', error);
+      }
+    } else {
+      console.log(`✅ CSI MasterFormat templates already seeded (${result.count} templates found)`);
+    }
+  });
+
+  // Migration: Create default "Uncategorized" cost code for each user
+  db.all("SELECT id FROM users", (err, users) => {
+    if (err) {
+      console.error('Error fetching users for cost code migration:', err);
+      return;
+    }
+
+    if (users && users.length > 0) {
+      users.forEach(user => {
+        // Check if user already has an Uncategorized code
+        db.get(
+          "SELECT id FROM cost_codes WHERE user_id = ? AND code = '00-00-00'",
+          [user.id],
+          (err, existingCode) => {
+            if (err) {
+              console.error(`Error checking for Uncategorized code for user ${user.id}:`, err);
+              return;
+            }
+
+            if (!existingCode) {
+              db.run(
+                `INSERT INTO cost_codes (code, description, division, is_template, user_id) 
+                 VALUES ('00-00-00', 'Uncategorized', '00 - Uncategorized', 0, ?)`,
+                [user.id],
+                function(err) {
+                  if (err) {
+                    console.error(`Error creating Uncategorized code for user ${user.id}:`, err);
+                  } else {
+                    const uncategorizedCodeId = this.lastID;
+                    console.log(`✅ Created Uncategorized cost code for user ${user.id}`);
+                    
+                    // Assign all existing line items without cost_code_id to Uncategorized
+                    db.run(
+                      `UPDATE line_items SET cost_code_id = ? WHERE user_id = ? AND cost_code_id IS NULL`,
+                      [uncategorizedCodeId, user.id],
+                      function(err) {
+                        if (err) {
+                          console.error(`Error updating line items for user ${user.id}:`, err);
+                        } else if (this.changes > 0) {
+                          console.log(`✅ Assigned ${this.changes} existing line items to Uncategorized for user ${user.id}`);
+                        }
+                      }
+                    );
+
+                    // Assign all existing change orders without cost_code_id to Uncategorized
+                    db.run(
+                      `UPDATE change_orders SET cost_code_id = ? WHERE user_id = ? AND cost_code_id IS NULL`,
+                      [uncategorizedCodeId, user.id],
+                      function(err) {
+                        if (err) {
+                          console.error(`Error updating change orders for user ${user.id}:`, err);
+                        } else if (this.changes > 0) {
+                          console.log(`✅ Assigned ${this.changes} existing change orders to Uncategorized for user ${user.id}`);
+                        }
+                      }
+                    );
+                  }
+                }
+              );
+            }
+          }
+        );
+      });
+    }
+  });
+
   console.log('Database tables created/updated successfully');
 });
 
@@ -830,6 +1068,16 @@ wss.on('connection', (ws, req) => {
   
   ws.on('error', (error) => {
     console.error('WebSocket error:', error);
+  });
+});
+
+// Health check endpoint for backend restart detection
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    startTime: SERVER_START_TIME,
+    uptime: Date.now() - SERVER_START_TIME,
+    timestamp: new Date().toISOString()
   });
 });
 
@@ -2196,28 +2444,304 @@ app.get('/api/projects/:projectId', requireAuth, (req, res) => {
                   
                   const pendingChangeOrders = changeOrders.filter(co => co.status === 'pending').length;
                   
-                  console.log(`📋 PROJECT COMMAND CENTER: Fetched project ${projectId} with ${totalQuotes} quotes (${quoteValue}), ${members.length} members, ${changeOrders.length} change orders`);
+                  // ===== BUDGET VS ACTUALS AGGREGATION (Phase 3) =====
                   
-                  res.json({
-                    success: true,
-                    project: projectData,
-                    quotes: quotes || [],
-                    members: members || [],
-                    changeOrders: changeOrders || [],
-                    // Project-specific KPIs for the Command Center
-                    kpis: {
-                      total_quotes: totalQuotes,
-                      quote_value: quoteValue,
-                      completed_quotes: completedQuotes,
-                      pending_change_orders: pendingChangeOrders,
-                      total_budget: projectData.total_budget,
-                      committed_budget: committedBudget
+                  // Step 1: Get budgeted amounts by cost code (from approved quotes + change orders)
+                  const budgetQuery = `
+                    SELECT 
+                      cc.id as cost_code_id,
+                      cc.code,
+                      cc.description,
+                      cc.division,
+                      COALESCE(SUM(li.estimatedCost), 0) as line_items_budget,
+                      COUNT(DISTINCT li.id) as line_item_count
+                    FROM cost_codes cc
+                    LEFT JOIN line_items li ON li.cost_code_id = cc.id
+                    LEFT JOIN quotes q ON li.quoteId = q.id
+                    WHERE (q.project_id = ? AND q.status = 'Approved' AND q.user_id = ?)
+                       OR cc.id IN (
+                         SELECT DISTINCT cost_code_id FROM line_items 
+                         WHERE quoteId IN (SELECT id FROM quotes WHERE project_id = ? AND status = 'Approved')
+                       )
+                    GROUP BY cc.id
+                  `;
+
+                  db.all(budgetQuery, [projectId, userId, projectId], (err, budgetByCode) => {
+                    if (err) {
+                      console.error('Error calculating budget by code:', err);
+                      budgetByCode = [];
                     }
+
+                    // Step 2: Get change orders by cost code
+                    const changeOrdersBudgetQuery = `
+                      SELECT 
+                        co.cost_code_id,
+                        COALESCE(SUM(co.amount), 0) as change_orders_total
+                      FROM change_orders co
+                      INNER JOIN quotes q ON co.quoteId = q.id
+                      WHERE q.project_id = ? AND co.status = 'Approved' AND q.user_id = ?
+                      GROUP BY co.cost_code_id
+                    `;
+
+                    db.all(changeOrdersBudgetQuery, [projectId, userId], (err, changeOrdersByCode) => {
+                      if (err) {
+                        console.error('Error calculating change orders by code:', err);
+                        changeOrdersByCode = [];
+                      }
+
+                      // Step 3: Get actual costs by cost code
+                      const actualsQuery = `
+                        SELECT 
+                          cost_code_id,
+                          COALESCE(SUM(amount), 0) as actual_amount,
+                          COUNT(id) as expense_count
+                        FROM actual_costs
+                        WHERE project_id = ? AND user_id = ? AND deleted_at IS NULL
+                        GROUP BY cost_code_id
+                      `;
+
+                      db.all(actualsQuery, [projectId, userId], (err, actualsByCode) => {
+                        if (err) {
+                          console.error('Error calculating actuals by code:', err);
+                          actualsByCode = [];
+                        }
+
+                        // Step 4: Combine and calculate variance
+                        const budgetMap = new Map();
+                        const changeOrderMap = new Map();
+                        const actualsMap = new Map();
+
+                        budgetByCode.forEach(item => {
+                          budgetMap.set(item.cost_code_id, item);
+                        });
+
+                        changeOrdersByCode.forEach(item => {
+                          changeOrderMap.set(item.cost_code_id, item.change_orders_total);
+                        });
+
+                        actualsByCode.forEach(item => {
+                          actualsMap.set(item.cost_code_id, item);
+                        });
+
+                        // Get all unique cost code IDs
+                        const allCostCodeIds = new Set([
+                          ...budgetMap.keys(),
+                          ...actualsMap.keys()
+                        ]);
+
+                        const budgetVsActuals = [];
+                        let totalBudgeted = 0;
+                        let totalActual = 0;
+
+                        allCostCodeIds.forEach(costCodeId => {
+                          const budgetItem = budgetMap.get(costCodeId) || { 
+                            code: 'Unknown', 
+                            description: 'Unknown Code', 
+                            division: null,
+                            line_items_budget: 0 
+                          };
+                          const changeOrderAmount = changeOrderMap.get(costCodeId) || 0;
+                          const actualItem = actualsMap.get(costCodeId) || { actual_amount: 0, expense_count: 0 };
+
+                          const budgetedAmount = budgetItem.line_items_budget + changeOrderAmount;
+                          const actualAmount = actualItem.actual_amount;
+                          const variance = budgetedAmount - actualAmount;
+                          const variancePercent = budgetedAmount > 0 ? (variance / budgetedAmount) * 100 : 0;
+
+                          // Determine status
+                          let status = 'on_budget';
+                          if (variancePercent < -5) {
+                            status = 'over_budget';
+                          } else if (variancePercent > 5) {
+                            status = 'under_budget';
+                          }
+
+                          if (budgetedAmount > 0 || actualAmount > 0) {
+                            budgetVsActuals.push({
+                              costCodeId: costCodeId,
+                              code: budgetItem.code,
+                              description: budgetItem.description,
+                              division: budgetItem.division,
+                              budgetedAmount: budgetedAmount,
+                              actualAmount: actualAmount,
+                              variance: variance,
+                              variancePercent: variancePercent,
+                              status: status,
+                              lineItemCount: budgetItem.line_item_count || 0,
+                              expenseCount: actualItem.expense_count || 0
+                            });
+
+                            totalBudgeted += budgetedAmount;
+                            totalActual += actualAmount;
+                          }
+                        });
+
+                        // Sort by division and code
+                        budgetVsActuals.sort((a, b) => {
+                          if (a.division !== b.division) {
+                            return (a.division || '').localeCompare(b.division || '');
+                          }
+                          return a.code.localeCompare(b.code);
+                        });
+
+                        // Calculate overall budget health
+                        const totalVariance = totalBudgeted - totalActual;
+                        const totalVariancePercent = totalBudgeted > 0 ? (totalVariance / totalBudgeted) * 100 : 0;
+                        
+                        let budgetHealth = 'healthy';
+                        if (totalVariancePercent < -10) {
+                          budgetHealth = 'critical';
+                        } else if (totalVariancePercent < -5) {
+                          budgetHealth = 'warning';
+                        }
+
+                        // Check if baseline is frozen
+                        db.get(
+                          'SELECT id, frozen_at, frozen_by, notes FROM budget_baselines WHERE project_id = ? AND user_id = ?',
+                          [projectId, userId],
+                          (err, baseline) => {
+                            console.log(`📋 PROJECT COMMAND CENTER: Fetched project ${projectId} with ${totalQuotes} quotes (${quoteValue}), ${members.length} members, ${changeOrders.length} change orders, BvA: ${budgetVsActuals.length} codes`);
+                            
+                            res.json({
+                              success: true,
+                              project: projectData,
+                              quotes: quotes || [],
+                              members: members || [],
+                              changeOrders: changeOrders || [],
+                              // Project-specific KPIs for the Command Center
+                              kpis: {
+                                total_quotes: totalQuotes,
+                                quote_value: quoteValue,
+                                completed_quotes: completedQuotes,
+                                pending_change_orders: pendingChangeOrders,
+                                total_budget: projectData.total_budget,
+                                committed_budget: committedBudget
+                              },
+                              // Budget vs Actuals Data (Phase 3)
+                              budgetVsActuals: budgetVsActuals,
+                              budgetSummary: {
+                                totalBudget: totalBudgeted,
+                                totalActual: totalActual,
+                                totalVariance: totalVariance,
+                                variancePercent: totalVariancePercent,
+                                baselineFrozen: !!baseline,
+                                budgetHealth: budgetHealth,
+                                baseline: baseline || null
+                              }
+                            });
+                          }
+                        );
+                      });
+                    });
                   });
                 }
               );
             }
           );
+        }
+      );
+    }
+  );
+});
+
+// Bulk operations on projects (MUST come before /:projectId routes)
+app.patch('/api/projects/bulk', requireAuth, (req, res) => {
+  const userId = req.session.userId;
+  const { projectIds, action, updates } = req.body;
+  
+  console.log(`🔄 PATCH /api/projects/bulk - User ${userId} performing action: ${action} on ${projectIds?.length} projects`);
+  
+  if (!projectIds || !Array.isArray(projectIds) || projectIds.length === 0) {
+    return res.status(400).json({ success: false, error: 'Invalid project IDs' });
+  }
+  
+  if (action === 'delete') {
+    const placeholders = projectIds.map(() => '?').join(',');
+    db.run(
+      `DELETE FROM projects WHERE id IN (${placeholders}) AND user_id = ?`,
+      [...projectIds, userId],
+      function (err) {
+        if (err) {
+          console.error('❌ Failed to bulk delete projects:', err);
+          return res.status(500).json({ success: false, error: 'Failed to delete projects' });
+        }
+        console.log(`✅ Bulk deleted ${this.changes} projects`);
+        res.json({ success: true, deletedCount: this.changes, message: `${this.changes} project(s) deleted successfully` });
+      }
+    );
+  } else if (action === 'updateStatus') {
+    const placeholders = projectIds.map(() => '?').join(',');
+    db.run(
+      `UPDATE projects SET status = ?, updated_at = datetime('now') WHERE id IN (${placeholders}) AND user_id = ?`,
+      [updates.status, ...projectIds, userId],
+      function (err) {
+        if (err) {
+          console.error('❌ Failed to bulk update status:', err);
+          return res.status(500).json({ success: false, error: 'Failed to update project status' });
+        }
+        console.log(`✅ Bulk updated status for ${this.changes} projects`);
+        res.json({ success: true, updatedCount: this.changes, message: `${this.changes} project(s) updated successfully` });
+      }
+    );
+  } else if (action === 'updatePriority') {
+    const placeholders = projectIds.map(() => '?').join(',');
+    db.run(
+      `UPDATE projects SET description = CASE 
+        WHEN description LIKE '%[Priority:%' THEN 
+          REPLACE(SUBSTR(description, 1, INSTR(description, '[Priority:') - 1) || SUBSTR(description, INSTR(description, ']') + 1), '  ', ' ')
+        ELSE description
+      END || ' [Priority: ' || ? || ']',
+      updated_at = datetime('now')
+      WHERE id IN (${placeholders}) AND user_id = ?`,
+      [updates.priority, ...projectIds, userId],
+      function (err) {
+        if (err) {
+          console.error('❌ Failed to bulk update priority:', err);
+          return res.status(500).json({ success: false, error: 'Failed to update project priority' });
+        }
+        console.log(`✅ Bulk updated priority for ${this.changes} projects`);
+        res.json({ success: true, updatedCount: this.changes, message: `${this.changes} project(s) updated successfully` });
+      }
+    );
+  } else {
+    return res.status(400).json({ success: false, error: 'Invalid action' });
+  }
+});
+
+// DELETE a project (only owner can delete)
+app.delete('/api/projects/:projectId', requireAuth, (req, res) => {
+  const userId = req.session.userId;
+  const { projectId } = req.params;
+  
+  console.log(`🗑️ DELETE /api/projects/${projectId} - User ${userId} attempting to delete project`);
+  
+  // Get project to check ownership
+  db.get(
+    'SELECT id, name, user_id FROM projects WHERE id = ? AND user_id = ?',
+    [projectId, userId],
+    (err, project) => {
+      if (err) {
+        console.error('❌ Database error:', err);
+        return res.status(500).json({ success: false, error: 'Database error' });
+      }
+      
+      if (!project) {
+        console.log('❌ Project not found or access denied');
+        return res.status(404).json({ success: false, error: 'Project not found or access denied' });
+      }
+      
+      // Delete project (CASCADE will handle related data)
+      db.run(
+        'DELETE FROM projects WHERE id = ? AND user_id = ?',
+        [projectId, userId],
+        function (err) {
+          if (err) {
+            console.error('❌ Failed to delete project:', err);
+            return res.status(500).json({ success: false, error: 'Failed to delete project' });
+          }
+          
+          console.log(`✅ Project "${project.name}" (ID: ${projectId}) deleted successfully`);
+          res.json({ success: true, message: `Project "${project.name}" deleted successfully` });
         }
       );
     }
@@ -3943,7 +4467,7 @@ app.post('/api/quotes/:quoteId/line-items', checkPermission(['Admin', 'Member'])
   
   const quoteId = parseInt(req.params.quoteId);
   const userId = req.session.userId;
-  const { description, estimatedCost = 0, actualCost = 0 } = req.body;
+  const { description, estimatedCost = 0, actualCost = 0, cost_code_id } = req.body;
 
   if (!quoteId || isNaN(quoteId)) {
     console.log('❌ Validation failed: Invalid quote ID');
@@ -3958,6 +4482,14 @@ app.post('/api/quotes/:quoteId/line-items', checkPermission(['Admin', 'Member'])
     return res.status(400).json({ 
       success: false, 
       error: 'Description is required' 
+    });
+  }
+
+  if (!cost_code_id) {
+    console.log('❌ Validation failed: Cost code is required');
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Cost code is required for budget tracking' 
     });
   }
 
@@ -3984,9 +4516,9 @@ app.post('/api/quotes/:quoteId/line-items', checkPermission(['Admin', 'Member'])
 
       // Create the line item
       db.run(
-        `INSERT INTO line_items (description, estimatedCost, actualCost, quoteId, user_id, created_at, updated_at) 
-         VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-        [description, estimatedCost, actualCost, quoteId, userId],
+        `INSERT INTO line_items (description, estimatedCost, actualCost, quoteId, user_id, cost_code_id, created_at, updated_at) 
+         VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+        [description, estimatedCost, actualCost, quoteId, userId, cost_code_id],
         function (err) {
           if (err) {
             console.error('❌ Database error:', err);
@@ -4000,7 +4532,7 @@ app.post('/api/quotes/:quoteId/line-items', checkPermission(['Admin', 'Member'])
           
           // Return the created line item
           db.get(
-            'SELECT id, description, estimatedCost, actualCost, created_at, updated_at FROM line_items WHERE id = ?',
+            'SELECT id, description, estimatedCost, actualCost, cost_code_id, created_at, updated_at FROM line_items WHERE id = ?',
             [this.lastID],
             (err, lineItem) => {
               if (err) {
@@ -4032,7 +4564,7 @@ app.put('/api/line-items/:itemId', checkProjectAccess(['Admin', 'Member']), (req
   
   const itemId = parseInt(req.params.itemId);
   const userId = req.session.userId;
-  const { description, estimatedCost, actualCost } = req.body;
+  const { description, estimatedCost, actualCost, cost_code_id } = req.body;
 
   if (!itemId || isNaN(itemId)) {
     console.log('❌ Validation failed: Invalid item ID');
@@ -4047,6 +4579,14 @@ app.put('/api/line-items/:itemId', checkProjectAccess(['Admin', 'Member']), (req
     return res.status(400).json({ 
       success: false, 
       error: 'Description is required' 
+    });
+  }
+
+  if (!cost_code_id) {
+    console.log('❌ Validation failed: Cost code is required');
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Cost code is required for budget tracking' 
     });
   }
 
@@ -4074,9 +4614,9 @@ app.put('/api/line-items/:itemId', checkProjectAccess(['Admin', 'Member']), (req
       // Update the line item
       db.run(
         `UPDATE line_items 
-         SET description = ?, estimatedCost = ?, actualCost = ?, updated_at = datetime('now')
+         SET description = ?, estimatedCost = ?, actualCost = ?, cost_code_id = ?, updated_at = datetime('now')
          WHERE id = ? AND user_id = ?`,
-        [description, estimatedCost || 0, actualCost || 0, itemId, userId],
+        [description, estimatedCost || 0, actualCost || 0, cost_code_id, itemId, userId],
         function (err) {
           if (err) {
             console.error('❌ Database error:', err);
@@ -4098,7 +4638,7 @@ app.put('/api/line-items/:itemId', checkProjectAccess(['Admin', 'Member']), (req
           
           // Return the updated line item
           db.get(
-            'SELECT id, description, estimatedCost, actualCost, created_at, updated_at FROM line_items WHERE id = ?',
+            'SELECT id, description, estimatedCost, actualCost, cost_code_id, created_at, updated_at FROM line_items WHERE id = ?',
             [itemId],
             (err, updatedLineItem) => {
               if (err) {
@@ -4261,7 +4801,7 @@ app.post('/api/quotes/:quoteId/change-orders', checkPermission(['Admin', 'Member
   
   const quoteId = parseInt(req.params.quoteId);
   const userId = req.session.userId;
-  const { description, amount } = req.body;
+  const { description, amount, cost_code_id } = req.body;
 
   // Validation
   if (!quoteId || isNaN(quoteId)) {
@@ -4288,6 +4828,14 @@ app.post('/api/quotes/:quoteId/change-orders', checkPermission(['Admin', 'Member
     });
   }
 
+  if (!cost_code_id) {
+    console.log('❌ Validation failed: Cost code is required');
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Cost code is required for budget tracking' 
+    });
+  }
+
   // First verify the quote belongs to the user
   db.get(
     'SELECT id FROM quotes WHERE id = ? AND user_id = ?',
@@ -4311,9 +4859,9 @@ app.post('/api/quotes/:quoteId/change-orders', checkPermission(['Admin', 'Member
 
       // Create the change order
       db.run(
-        `INSERT INTO change_orders (description, amount, status, quoteId, user_id, created_at, updated_at) 
-         VALUES (?, ?, 'Pending', ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
-        [description.trim(), parseFloat(amount), quoteId, userId],
+        `INSERT INTO change_orders (description, amount, status, quoteId, user_id, cost_code_id, created_at, updated_at) 
+         VALUES (?, ?, 'Pending', ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+        [description.trim(), parseFloat(amount), quoteId, userId, cost_code_id],
         function(err) {
           if (err) {
             console.error('❌ Database error:', err);
@@ -4473,7 +5021,7 @@ app.put('/api/change-orders/:changeOrderId', checkPermission(['Admin', 'Member']
   
   const changeOrderId = parseInt(req.params.changeOrderId);
   const userId = req.session.userId;
-  const { description, amount, status } = req.body;
+  const { description, amount, status, cost_code_id } = req.body;
 
   if (!changeOrderId || isNaN(changeOrderId)) {
     console.log('❌ Validation failed: Invalid change order ID');
@@ -4521,6 +5069,11 @@ app.put('/api/change-orders/:changeOrderId', checkPermission(['Admin', 'Member']
       if (status !== undefined && status.trim().length > 0) {
         updates.push('status = ?');
         values.push(status.trim());
+      }
+
+      if (cost_code_id !== undefined) {
+        updates.push('cost_code_id = ?');
+        values.push(cost_code_id);
       }
 
       if (updates.length === 0) {
@@ -6701,6 +7254,532 @@ app.delete('/api/vendors/:vendorId', checkPermission(['Admin', 'Member']), (req,
   );
 });
 
+// ===== COST CODES API ROUTES (Budget vs Actuals Feature) =====
+
+// GET all cost codes for user (custom + templates)
+app.get('/api/cost-codes', requireAuth, (req, res) => {
+  console.log('🔍 GET /api/cost-codes - Fetching cost codes for user:', req.session.userId);
+  
+  const { division, search, includeTemplates = 'true' } = req.query;
+  const userId = req.session.userId;
+  
+  let query = `
+    SELECT id, code, description, division, is_template, user_id, created_at, updated_at
+    FROM cost_codes
+    WHERE (user_id = ? OR ${includeTemplates === 'true' ? 'is_template = 1' : 'is_template = 0'})
+  `;
+  
+  const params = [userId];
+  
+  // Add division filter if provided
+  if (division) {
+    query += ` AND division = ?`;
+    params.push(division);
+  }
+  
+  // Add search filter if provided
+  if (search) {
+    query += ` AND (code LIKE ? OR description LIKE ?)`;
+    const searchPattern = `%${search}%`;
+    params.push(searchPattern, searchPattern);
+  }
+  
+  query += ` ORDER BY is_template DESC, division ASC, code ASC`;
+  
+  db.all(query, params, (err, codes) => {
+    if (err) {
+      console.error('❌ Error fetching cost codes:', err);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to fetch cost codes'
+      });
+    }
+    
+    console.log(`✅ Found ${codes.length} cost codes for user ${userId}`);
+    res.json({
+      success: true,
+      data: codes
+    });
+  });
+});
+
+// GET CSI MasterFormat templates only
+app.get('/api/cost-codes/templates', requireAuth, (req, res) => {
+  console.log('🔍 GET /api/cost-codes/templates - Fetching CSI templates');
+  
+  const query = `
+    SELECT id, code, description, division
+    FROM cost_codes
+    WHERE is_template = 1
+    ORDER BY division ASC, code ASC
+  `;
+  
+  db.all(query, [], (err, templates) => {
+    if (err) {
+      console.error('❌ Error fetching CSI templates:', err);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to fetch CSI templates'
+      });
+    }
+    
+    // Group by division for easier browsing
+    const groupedByDivision = templates.reduce((acc, template) => {
+      const division = template.division || 'Other';
+      if (!acc[division]) {
+        acc[division] = [];
+      }
+      acc[division].push(template);
+      return acc;
+    }, {});
+    
+    console.log(`✅ Found ${templates.length} CSI templates across ${Object.keys(groupedByDivision).length} divisions`);
+    res.json({
+      success: true,
+      data: {
+        templates,
+        groupedByDivision
+      }
+    });
+  });
+});
+
+// POST create custom cost code
+app.post('/api/cost-codes', checkPermission(['Admin', 'Member']), (req, res) => {
+  console.log('📝 POST /api/cost-codes - Creating cost code for user:', req.session.userId);
+  
+  const { code, description, division } = req.body;
+  const userId = req.session.userId;
+  
+  // Validation
+  if (!code || !code.trim()) {
+    return res.status(400).json({
+      success: false,
+      error: 'Cost code is required'
+    });
+  }
+  
+  if (!description || !description.trim()) {
+    return res.status(400).json({
+      success: false,
+      error: 'Description is required'
+    });
+  }
+  
+  // Check for duplicate code for this user
+  db.get(
+    'SELECT id FROM cost_codes WHERE code = ? AND user_id = ?',
+    [code.trim(), userId],
+    (err, existing) => {
+      if (err) {
+        console.error('❌ Error checking for duplicate cost code:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'Failed to validate cost code'
+        });
+      }
+      
+      if (existing) {
+        return res.status(400).json({
+          success: false,
+          error: 'A cost code with this code already exists in your library'
+        });
+      }
+      
+      // Insert new cost code
+      db.run(
+        `INSERT INTO cost_codes (code, description, division, is_template, user_id)
+         VALUES (?, ?, ?, 0, ?)`,
+        [code.trim(), description.trim(), division?.trim() || null, userId],
+        function(err) {
+          if (err) {
+            console.error('❌ Error creating cost code:', err);
+            return res.status(500).json({
+              success: false,
+              error: 'Failed to create cost code'
+            });
+          }
+          
+          const newCodeId = this.lastID;
+          console.log(`✅ Cost code created successfully with ID: ${newCodeId}`);
+          
+          // Fetch the newly created code
+          db.get(
+            'SELECT * FROM cost_codes WHERE id = ?',
+            [newCodeId],
+            (err, newCode) => {
+              if (err) {
+                console.error('❌ Error fetching new cost code:', err);
+                return res.status(500).json({
+                  success: false,
+                  error: 'Cost code created but failed to retrieve'
+                });
+              }
+              
+              createNotification(
+                userId,
+                `New cost code "${code.trim()}" added to your library`
+              );
+              
+              res.status(201).json({
+                success: true,
+                data: newCode
+              });
+            }
+          );
+        }
+      );
+    }
+  );
+});
+
+// POST import CSI template to user's library
+app.post('/api/cost-codes/import-template', checkPermission(['Admin', 'Member']), (req, res) => {
+  console.log('📥 POST /api/cost-codes/import-template - Importing template for user:', req.session.userId);
+  
+  const { templateId, customDescription } = req.body;
+  const userId = req.session.userId;
+  
+  if (!templateId) {
+    return res.status(400).json({
+      success: false,
+      error: 'Template ID is required'
+    });
+  }
+  
+  // Get the template
+  db.get(
+    'SELECT * FROM cost_codes WHERE id = ? AND is_template = 1',
+    [templateId],
+    (err, template) => {
+      if (err) {
+        console.error('❌ Error fetching template:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'Failed to fetch template'
+        });
+      }
+      
+      if (!template) {
+        return res.status(404).json({
+          success: false,
+          error: 'Template not found'
+        });
+      }
+      
+      // Check if user already has this code
+      db.get(
+        'SELECT id FROM cost_codes WHERE code = ? AND user_id = ?',
+        [template.code, userId],
+        (err, existing) => {
+          if (err) {
+            console.error('❌ Error checking for existing code:', err);
+            return res.status(500).json({
+              success: false,
+              error: 'Failed to validate code'
+            });
+          }
+          
+          if (existing) {
+            return res.status(400).json({
+              success: false,
+              error: 'You already have a cost code with this code'
+            });
+          }
+          
+          // Copy template to user's library
+          const description = customDescription?.trim() || template.description;
+          
+          db.run(
+            `INSERT INTO cost_codes (code, description, division, is_template, user_id)
+             VALUES (?, ?, ?, 0, ?)`,
+            [template.code, description, template.division, userId],
+            function(err) {
+              if (err) {
+                console.error('❌ Error importing template:', err);
+                return res.status(500).json({
+                  success: false,
+                  error: 'Failed to import template'
+                });
+              }
+              
+              const newCodeId = this.lastID;
+              console.log(`✅ Template imported successfully with ID: ${newCodeId}`);
+              
+              // Fetch the newly created code
+              db.get(
+                'SELECT * FROM cost_codes WHERE id = ?',
+                [newCodeId],
+                (err, newCode) => {
+                  if (err) {
+                    console.error('❌ Error fetching imported code:', err);
+                    return res.status(500).json({
+                      success: false,
+                      error: 'Template imported but failed to retrieve'
+                    });
+                  }
+                  
+                  createNotification(
+                    userId,
+                    `CSI template "${template.code}" imported to your library`
+                  );
+                  
+                  res.status(201).json({
+                    success: true,
+                    data: newCode
+                  });
+                }
+              );
+            }
+          );
+        }
+      );
+    }
+  );
+});
+
+// PUT update custom cost code
+app.put('/api/cost-codes/:id', checkPermission(['Admin', 'Member']), (req, res) => {
+  const codeId = parseInt(req.params.id);
+  const userId = req.session.userId;
+  console.log(`🔄 PUT /api/cost-codes/${codeId} - Updating cost code for user:`, userId);
+  
+  if (!codeId || isNaN(codeId)) {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid cost code ID'
+    });
+  }
+  
+  const { code, description, division } = req.body;
+  
+  // Validation
+  if (!code || !code.trim()) {
+    return res.status(400).json({
+      success: false,
+      error: 'Cost code is required'
+    });
+  }
+  
+  if (!description || !description.trim()) {
+    return res.status(400).json({
+      success: false,
+      error: 'Description is required'
+    });
+  }
+  
+  // Verify ownership and prevent editing templates
+  db.get(
+    'SELECT * FROM cost_codes WHERE id = ? AND user_id = ?',
+    [codeId, userId],
+    (err, costCode) => {
+      if (err) {
+        console.error('❌ Error fetching cost code:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'Failed to fetch cost code'
+        });
+      }
+      
+      if (!costCode) {
+        return res.status(404).json({
+          success: false,
+          error: 'Cost code not found or access denied'
+        });
+      }
+      
+      if (costCode.is_template) {
+        return res.status(403).json({
+          success: false,
+          error: 'Cannot edit CSI MasterFormat templates. Import it to your library first.'
+        });
+      }
+      
+      // Check for duplicate code (excluding current code)
+      db.get(
+        'SELECT id FROM cost_codes WHERE code = ? AND user_id = ? AND id != ?',
+        [code.trim(), userId, codeId],
+        (err, duplicate) => {
+          if (err) {
+            console.error('❌ Error checking for duplicate code:', err);
+            return res.status(500).json({
+              success: false,
+              error: 'Failed to validate code'
+            });
+          }
+          
+          if (duplicate) {
+            return res.status(400).json({
+              success: false,
+              error: 'A cost code with this code already exists in your library'
+            });
+          }
+          
+          // Update the cost code
+          db.run(
+            `UPDATE cost_codes 
+             SET code = ?, description = ?, division = ?, updated_at = CURRENT_TIMESTAMP
+             WHERE id = ? AND user_id = ?`,
+            [code.trim(), description.trim(), division?.trim() || null, codeId, userId],
+            function(err) {
+              if (err) {
+                console.error('❌ Error updating cost code:', err);
+                return res.status(500).json({
+                  success: false,
+                  error: 'Failed to update cost code'
+                });
+              }
+              
+              if (this.changes === 0) {
+                return res.status(404).json({
+                  success: false,
+                  error: 'Cost code not found'
+                });
+              }
+              
+              console.log(`✅ Cost code ${codeId} updated successfully`);
+              
+              // Fetch updated code
+              db.get(
+                'SELECT * FROM cost_codes WHERE id = ?',
+                [codeId],
+                (err, updatedCode) => {
+                  if (err) {
+                    console.error('❌ Error fetching updated cost code:', err);
+                    return res.status(500).json({
+                      success: false,
+                      error: 'Cost code updated but failed to retrieve'
+                    });
+                  }
+                  
+                  createNotification(
+                    userId,
+                    `Cost code "${code.trim()}" updated successfully`
+                  );
+                  
+                  res.json({
+                    success: true,
+                    data: updatedCode
+                  });
+                }
+              );
+            }
+          );
+        }
+      );
+    }
+  );
+});
+
+// DELETE custom cost code
+app.delete('/api/cost-codes/:id', checkPermission(['Admin', 'Member']), (req, res) => {
+  const codeId = parseInt(req.params.id);
+  const userId = req.session.userId;
+  console.log(`🗑️ DELETE /api/cost-codes/${codeId} - Deleting cost code for user:`, userId);
+  
+  if (!codeId || isNaN(codeId)) {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid cost code ID'
+    });
+  }
+  
+  // Verify ownership and prevent deleting templates
+  db.get(
+    'SELECT * FROM cost_codes WHERE id = ? AND user_id = ?',
+    [codeId, userId],
+    (err, costCode) => {
+      if (err) {
+        console.error('❌ Error fetching cost code:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'Failed to fetch cost code'
+        });
+      }
+      
+      if (!costCode) {
+        return res.status(404).json({
+          success: false,
+          error: 'Cost code not found or access denied'
+        });
+      }
+      
+      if (costCode.is_template) {
+        return res.status(403).json({
+          success: false,
+          error: 'Cannot delete CSI MasterFormat templates'
+        });
+      }
+      
+      // Check if code is in use by line items or change orders
+      db.get(
+        `SELECT 
+          (SELECT COUNT(*) FROM line_items WHERE cost_code_id = ?) as lineItemCount,
+          (SELECT COUNT(*) FROM change_orders WHERE cost_code_id = ?) as changeOrderCount`,
+        [codeId, codeId],
+        (err, usage) => {
+          if (err) {
+            console.error('❌ Error checking cost code usage:', err);
+            return res.status(500).json({
+              success: false,
+              error: 'Failed to check cost code usage'
+            });
+          }
+          
+          const totalUsage = (usage.lineItemCount || 0) + (usage.changeOrderCount || 0);
+          
+          if (totalUsage > 0) {
+            return res.status(400).json({
+              success: false,
+              error: `Cannot delete cost code. It is currently used by ${usage.lineItemCount} line item(s) and ${usage.changeOrderCount} change order(s).`,
+              usage: {
+                lineItems: usage.lineItemCount,
+                changeOrders: usage.changeOrderCount
+              }
+            });
+          }
+          
+          // Delete the cost code
+          db.run(
+            'DELETE FROM cost_codes WHERE id = ? AND user_id = ?',
+            [codeId, userId],
+            function(err) {
+              if (err) {
+                console.error('❌ Error deleting cost code:', err);
+                return res.status(500).json({
+                  success: false,
+                  error: 'Failed to delete cost code'
+                });
+              }
+              
+              if (this.changes === 0) {
+                return res.status(404).json({
+                  success: false,
+                  error: 'Cost code not found'
+                });
+              }
+              
+              console.log(`✅ Cost code ${codeId} deleted successfully`);
+              
+              createNotification(
+                userId,
+                `Cost code "${costCode.code}" has been removed from your library`
+              );
+              
+              res.json({
+                success: true,
+                message: 'Cost code deleted successfully'
+              });
+            }
+          );
+        }
+      );
+    }
+  );
+});
+
+// ===== END COST CODES API ROUTES =====
+
 // Endpoint to add/find user (legacy endpoint, keeping for compatibility)
 app.post('/api/users-legacy', (req, res) => {
   const { id, email, name, provider } = req.body;
@@ -7078,6 +8157,715 @@ app.delete('/api/integrations/quickbooks/disconnect', requireAuth, (req, res) =>
         success: true,
         message: 'QuickBooks integration disconnected successfully'
       });
+    }
+  );
+});
+
+// ===== ACTUAL COSTS API ROUTES (Budget vs Actuals Feature - Phase 2) =====
+
+// GET all actual costs for a project
+app.get('/api/projects/:id/actuals', requireAuth, (req, res) => {
+  console.log('🔍 GET /api/projects/:id/actuals - Fetching actual costs for project:', req.params.id);
+
+  const projectId = parseInt(req.params.id);
+  const userId = req.session.userId;
+
+  if (!projectId || isNaN(projectId)) {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid project ID'
+    });
+  }
+
+  // First verify the project belongs to the user
+  db.get(
+    'SELECT id FROM projects WHERE id = ? AND user_id = ?',
+    [projectId, userId],
+    (err, project) => {
+      if (err) {
+        console.error('❌ Database error:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'Database error while verifying project ownership'
+        });
+      }
+
+      if (!project) {
+        console.log('❌ Project not found or access denied');
+        return res.status(404).json({
+          success: false,
+          error: 'Project not found or access denied'
+        });
+      }
+
+      // Fetch all actual costs with related data
+      const query = `
+        SELECT 
+          ac.id,
+          ac.project_id,
+          ac.cost_code_id,
+          ac.amount,
+          ac.date,
+          ac.description,
+          ac.vendor_id,
+          ac.receipt_url,
+          ac.created_by,
+          ac.created_at,
+          ac.updated_at,
+          cc.code as cost_code,
+          cc.description as cost_code_description,
+          cc.division as cost_code_division,
+          v.name as vendor_name,
+          u.email as created_by_email
+        FROM actual_costs ac
+        LEFT JOIN cost_codes cc ON ac.cost_code_id = cc.id
+        LEFT JOIN vendors v ON ac.vendor_id = v.id
+        LEFT JOIN users u ON ac.created_by = u.id
+        WHERE ac.project_id = ? AND ac.user_id = ? AND ac.deleted_at IS NULL
+        ORDER BY ac.date DESC, ac.created_at DESC
+      `;
+
+      db.all(query, [projectId, userId], (err, actuals) => {
+        if (err) {
+          console.error('❌ Error fetching actual costs:', err);
+          return res.status(500).json({
+            success: false,
+            error: 'Failed to fetch actual costs'
+          });
+        }
+
+        console.log(`✅ Found ${actuals.length} actual costs for project ${projectId}`);
+        res.json({
+          success: true,
+          data: actuals
+        });
+      });
+    }
+  );
+});
+
+// POST a new actual cost entry
+app.post('/api/projects/:id/actuals', checkPermission(['Admin', 'Member']), (req, res) => {
+  console.log('📝 POST /api/projects/:id/actuals - Creating actual cost for project:', req.params.id);
+
+  const projectId = parseInt(req.params.id);
+  const userId = req.session.userId;
+  const { cost_code_id, amount, date, description, vendor_id } = req.body;
+
+  // Validation
+  if (!projectId || isNaN(projectId)) {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid project ID'
+    });
+  }
+
+  if (!cost_code_id) {
+    return res.status(400).json({
+      success: false,
+      error: 'Cost code is required'
+    });
+  }
+
+  if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
+    return res.status(400).json({
+      success: false,
+      error: 'Amount is required and must be greater than 0'
+    });
+  }
+
+  if (!date) {
+    return res.status(400).json({
+      success: false,
+      error: 'Date is required'
+    });
+  }
+
+  // Verify project belongs to user
+  db.get(
+    'SELECT id, name FROM projects WHERE id = ? AND user_id = ?',
+    [projectId, userId],
+    (err, project) => {
+      if (err) {
+        console.error('❌ Database error:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'Database error while verifying project ownership'
+        });
+      }
+
+      if (!project) {
+        return res.status(404).json({
+          success: false,
+          error: 'Project not found or access denied'
+        });
+      }
+
+      // Insert the actual cost
+      db.run(
+        `INSERT INTO actual_costs (
+          project_id, cost_code_id, amount, date, description, vendor_id, 
+          created_by, user_id, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+        [projectId, cost_code_id, parseFloat(amount), date, description || null, vendor_id || null, userId, userId],
+        function (err) {
+          if (err) {
+            console.error('❌ Database error creating actual cost:', err);
+            return res.status(500).json({
+              success: false,
+              error: 'Failed to create actual cost entry'
+            });
+          }
+
+          const actualCostId = this.lastID;
+          console.log(`✅ Actual cost created with ID: ${actualCostId}`);
+
+          // Fetch the created actual cost with related data
+          db.get(
+            `SELECT 
+              ac.id, ac.project_id, ac.cost_code_id, ac.amount, ac.date, 
+              ac.description, ac.vendor_id, ac.created_by, ac.created_at, ac.updated_at,
+              cc.code as cost_code, cc.description as cost_code_description,
+              v.name as vendor_name
+            FROM actual_costs ac
+            LEFT JOIN cost_codes cc ON ac.cost_code_id = cc.id
+            LEFT JOIN vendors v ON ac.vendor_id = v.id
+            WHERE ac.id = ?`,
+            [actualCostId],
+            (err, actualCost) => {
+              if (err) {
+                console.error('❌ Error fetching created actual cost:', err);
+                return res.status(500).json({
+                  success: false,
+                  error: 'Actual cost created but error fetching details'
+                });
+              }
+
+              // Create notification for large expenses (over $1000)
+              if (parseFloat(amount) > 1000) {
+                createNotification(
+                  userId,
+                  `Large expense logged: $${parseFloat(amount).toLocaleString()} for project "${project.title}"`
+                );
+              }
+
+              res.status(201).json({
+                success: true,
+                message: 'Actual cost created successfully',
+                data: actualCost
+              });
+            }
+          );
+        }
+      );
+    }
+  );
+});
+
+// PUT update an actual cost entry
+app.put('/api/projects/:projectId/actuals/:actualId', checkPermission(['Admin', 'Member']), (req, res) => {
+  console.log('✏️ PUT /api/projects/:projectId/actuals/:actualId - Updating actual cost');
+
+  const projectId = parseInt(req.params.projectId);
+  const actualId = parseInt(req.params.actualId);
+  const userId = req.session.userId;
+  const { cost_code_id, amount, date, description, vendor_id } = req.body;
+
+  if (!projectId || isNaN(projectId) || !actualId || isNaN(actualId)) {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid project ID or actual cost ID'
+    });
+  }
+
+  // Verify ownership
+  db.get(
+    'SELECT id FROM actual_costs WHERE id = ? AND project_id = ? AND user_id = ? AND deleted_at IS NULL',
+    [actualId, projectId, userId],
+    (err, actualCost) => {
+      if (err) {
+        console.error('❌ Database error:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'Database error while verifying actual cost ownership'
+        });
+      }
+
+      if (!actualCost) {
+        return res.status(404).json({
+          success: false,
+          error: 'Actual cost not found or access denied'
+        });
+      }
+
+      // Build dynamic update query
+      const updates = [];
+      const values = [];
+
+      if (cost_code_id !== undefined) {
+        updates.push('cost_code_id = ?');
+        values.push(cost_code_id);
+      }
+
+      if (amount !== undefined && !isNaN(parseFloat(amount))) {
+        updates.push('amount = ?');
+        values.push(parseFloat(amount));
+      }
+
+      if (date !== undefined) {
+        updates.push('date = ?');
+        values.push(date);
+      }
+
+      if (description !== undefined) {
+        updates.push('description = ?');
+        values.push(description);
+      }
+
+      if (vendor_id !== undefined) {
+        updates.push('vendor_id = ?');
+        values.push(vendor_id);
+      }
+
+      if (updates.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'No valid fields provided for update'
+        });
+      }
+
+      updates.push("updated_at = datetime('now')");
+      values.push(actualId, userId);
+
+      const query = `UPDATE actual_costs SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`;
+
+      db.run(query, values, function (err) {
+        if (err) {
+          console.error('❌ Database error updating actual cost:', err);
+          return res.status(500).json({
+            success: false,
+            error: 'Failed to update actual cost'
+          });
+        }
+
+        if (this.changes === 0) {
+          return res.status(404).json({
+            success: false,
+            error: 'Actual cost not found or no changes made'
+          });
+        }
+
+        console.log(`✅ Actual cost ${actualId} updated successfully`);
+
+        // Fetch updated actual cost
+        db.get(
+          `SELECT 
+            ac.id, ac.project_id, ac.cost_code_id, ac.amount, ac.date, 
+            ac.description, ac.vendor_id, ac.created_by, ac.created_at, ac.updated_at,
+            cc.code as cost_code, cc.description as cost_code_description,
+            v.name as vendor_name
+          FROM actual_costs ac
+          LEFT JOIN cost_codes cc ON ac.cost_code_id = cc.id
+          LEFT JOIN vendors v ON ac.vendor_id = v.id
+          WHERE ac.id = ?`,
+          [actualId],
+          (err, updatedActualCost) => {
+            if (err) {
+              console.error('❌ Error fetching updated actual cost:', err);
+              return res.status(500).json({
+                success: false,
+                error: 'Actual cost updated but error fetching details'
+              });
+            }
+
+            res.json({
+              success: true,
+              message: 'Actual cost updated successfully',
+              data: updatedActualCost
+            });
+          }
+        );
+      });
+    }
+  );
+});
+
+// DELETE an actual cost entry (soft delete)
+app.delete('/api/projects/:projectId/actuals/:actualId', checkPermission(['Admin']), (req, res) => {
+  console.log('🗑️ DELETE /api/projects/:projectId/actuals/:actualId - Deleting actual cost');
+
+  const projectId = parseInt(req.params.projectId);
+  const actualId = parseInt(req.params.actualId);
+  const userId = req.session.userId;
+
+  if (!projectId || isNaN(projectId) || !actualId || isNaN(actualId)) {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid project ID or actual cost ID'
+    });
+  }
+
+  // Verify ownership
+  db.get(
+    'SELECT id FROM actual_costs WHERE id = ? AND project_id = ? AND user_id = ? AND deleted_at IS NULL',
+    [actualId, projectId, userId],
+    (err, actualCost) => {
+      if (err) {
+        console.error('❌ Database error:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'Database error while verifying actual cost ownership'
+        });
+      }
+
+      if (!actualCost) {
+        return res.status(404).json({
+          success: false,
+          error: 'Actual cost not found or access denied'
+        });
+      }
+
+      // Soft delete the actual cost
+      db.run(
+        "UPDATE actual_costs SET deleted_at = datetime('now'), updated_at = datetime('now') WHERE id = ? AND user_id = ?",
+        [actualId, userId],
+        function (err) {
+          if (err) {
+            console.error('❌ Database error deleting actual cost:', err);
+            return res.status(500).json({
+              success: false,
+              error: 'Failed to delete actual cost'
+            });
+          }
+
+          if (this.changes === 0) {
+            return res.status(404).json({
+              success: false,
+              error: 'Actual cost not found'
+            });
+          }
+
+          console.log(`✅ Actual cost ${actualId} deleted successfully`);
+          res.json({
+            success: true,
+            message: 'Actual cost deleted successfully'
+          });
+        }
+      );
+    }
+  );
+});
+
+// ===== BASELINE BUDGET API ROUTES (Budget vs Actuals Feature - Phase 2.5) =====
+
+// GET baseline budget for a project
+app.get('/api/projects/:id/baseline', requireAuth, (req, res) => {
+  console.log('🔍 GET /api/projects/:id/baseline - Fetching baseline for project:', req.params.id);
+
+  const projectId = parseInt(req.params.id);
+  const userId = req.session.userId;
+
+  if (!projectId || isNaN(projectId)) {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid project ID'
+    });
+  }
+
+  // Verify project ownership
+  db.get(
+    'SELECT id FROM projects WHERE id = ? AND user_id = ?',
+    [projectId, userId],
+    (err, project) => {
+      if (err) {
+        console.error('❌ Database error:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'Database error while verifying project ownership'
+        });
+      }
+
+      if (!project) {
+        return res.status(404).json({
+          success: false,
+          error: 'Project not found or access denied'
+        });
+      }
+
+      // Fetch baseline
+      db.get(
+        `SELECT 
+          bb.id,
+          bb.project_id,
+          bb.baseline_data,
+          bb.frozen_at,
+          bb.frozen_by,
+          bb.notes,
+          u.email as frozen_by_email
+        FROM budget_baselines bb
+        LEFT JOIN users u ON bb.frozen_by = u.id
+        WHERE bb.project_id = ? AND bb.user_id = ?`,
+        [projectId, userId],
+        (err, baseline) => {
+          if (err) {
+            console.error('❌ Error fetching baseline:', err);
+            return res.status(500).json({
+              success: false,
+              error: 'Failed to fetch baseline budget'
+            });
+          }
+
+          if (!baseline) {
+            console.log(`✅ No baseline found for project ${projectId}`);
+            return res.json({
+              success: true,
+              data: null
+            });
+          }
+
+          // Parse baseline_data JSON
+          try {
+            baseline.baseline_data = JSON.parse(baseline.baseline_data);
+          } catch (e) {
+            console.error('❌ Error parsing baseline data:', e);
+            baseline.baseline_data = null;
+          }
+
+          console.log(`✅ Baseline found for project ${projectId}`);
+          res.json({
+            success: true,
+            data: baseline
+          });
+        }
+      );
+    }
+  );
+});
+
+// POST freeze baseline budget
+app.post('/api/projects/:id/baseline/freeze', checkPermission(['Admin']), (req, res) => {
+  console.log('🔒 POST /api/projects/:id/baseline/freeze - Freezing baseline for project:', req.params.id);
+
+  const projectId = parseInt(req.params.id);
+  const userId = req.session.userId;
+  const { notes } = req.body;
+
+  if (!projectId || isNaN(projectId)) {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid project ID'
+    });
+  }
+
+  // Verify project ownership
+  db.get(
+    'SELECT id, name FROM projects WHERE id = ? AND user_id = ?',
+    [projectId, userId],
+    (err, project) => {
+      if (err) {
+        console.error('❌ Database error:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'Database error while verifying project ownership'
+        });
+      }
+
+      if (!project) {
+        return res.status(404).json({
+          success: false,
+          error: 'Project not found or access denied'
+        });
+      }
+
+      // Check if baseline already exists
+      db.get(
+        'SELECT id FROM budget_baselines WHERE project_id = ? AND user_id = ?',
+        [projectId, userId],
+        (err, existingBaseline) => {
+          if (err) {
+            console.error('❌ Database error:', err);
+            return res.status(500).json({
+              success: false,
+              error: 'Database error while checking existing baseline'
+            });
+          }
+
+          if (existingBaseline) {
+            return res.status(400).json({
+              success: false,
+              error: 'Baseline already frozen for this project. Unfreeze first to create a new baseline.'
+            });
+          }
+
+          // Calculate current budget from approved quotes and change orders
+          const budgetQuery = `
+            SELECT 
+              li.cost_code_id,
+              cc.code,
+              cc.description,
+              cc.division,
+              SUM(li.estimatedCost) as budgeted_amount,
+              COUNT(li.id) as line_item_count
+            FROM line_items li
+            INNER JOIN quotes q ON li.quoteId = q.id
+            LEFT JOIN cost_codes cc ON li.cost_code_id = cc.id
+            WHERE q.project_id = ? AND q.status = 'Approved' AND q.user_id = ?
+            GROUP BY li.cost_code_id
+          `;
+
+          db.all(budgetQuery, [projectId, userId], (err, budgetByCode) => {
+            if (err) {
+              console.error('❌ Database error calculating budget:', err);
+              return res.status(500).json({
+                success: false,
+                error: 'Failed to calculate budget for baseline'
+              });
+            }
+
+            // Also get change orders
+            const changeOrdersQuery = `
+              SELECT 
+                co.cost_code_id,
+                cc.code,
+                cc.description,
+                SUM(co.amount) as total_change_orders
+              FROM change_orders co
+              INNER JOIN quotes q ON co.quoteId = q.id
+              LEFT JOIN cost_codes cc ON co.cost_code_id = cc.id
+              WHERE q.project_id = ? AND co.status = 'Approved' AND co.user_id = ?
+              GROUP BY co.cost_code_id
+            `;
+
+            db.all(changeOrdersQuery, [projectId, userId], (err, changeOrdersByCode) => {
+              if (err) {
+                console.error('❌ Database error calculating change orders:', err);
+                return res.status(500).json({
+                  success: false,
+                  error: 'Failed to calculate change orders for baseline'
+                });
+              }
+
+              // Combine budget and change orders
+              const baselineData = {
+                budgetByCode: budgetByCode || [],
+                changeOrdersByCode: changeOrdersByCode || [],
+                frozenAt: new Date().toISOString(),
+                projectTitle: project.title
+              };
+
+              // Insert baseline
+              db.run(
+                `INSERT INTO budget_baselines (project_id, baseline_data, frozen_at, frozen_by, notes, user_id)
+                 VALUES (?, ?, datetime('now'), ?, ?, ?)`,
+                [projectId, JSON.stringify(baselineData), userId, notes || null, userId],
+                function (err) {
+                  if (err) {
+                    console.error('❌ Database error creating baseline:', err);
+                    return res.status(500).json({
+                      success: false,
+                      error: 'Failed to freeze baseline budget'
+                    });
+                  }
+
+                  const baselineId = this.lastID;
+                  console.log(`✅ Baseline frozen successfully with ID: ${baselineId}`);
+
+                  // Create notification
+                  createNotification(
+                    userId,
+                    `Budget baseline frozen for project "${project.title}"`
+                  );
+
+                  res.status(201).json({
+                    success: true,
+                    message: 'Baseline budget frozen successfully',
+                    data: {
+                      id: baselineId,
+                      project_id: projectId,
+                      baseline_data: baselineData,
+                      frozen_at: new Date().toISOString(),
+                      frozen_by: userId,
+                      notes: notes || null
+                    }
+                  });
+                }
+              );
+            });
+          });
+        }
+      );
+    }
+  );
+});
+
+// DELETE unfreeze baseline budget
+app.delete('/api/projects/:id/baseline', checkPermission(['Admin']), (req, res) => {
+  console.log('🔓 DELETE /api/projects/:id/baseline - Unfreezing baseline for project:', req.params.id);
+
+  const projectId = parseInt(req.params.id);
+  const userId = req.session.userId;
+
+  if (!projectId || isNaN(projectId)) {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid project ID'
+    });
+  }
+
+  // Verify project ownership
+  db.get(
+    'SELECT id, name FROM projects WHERE id = ? AND user_id = ?',
+    [projectId, userId],
+    (err, project) => {
+      if (err) {
+        console.error('❌ Database error:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'Database error while verifying project ownership'
+        });
+      }
+
+      if (!project) {
+        return res.status(404).json({
+          success: false,
+          error: 'Project not found or access denied'
+        });
+      }
+
+      // Delete baseline
+      db.run(
+        'DELETE FROM budget_baselines WHERE project_id = ? AND user_id = ?',
+        [projectId, userId],
+        function (err) {
+          if (err) {
+            console.error('❌ Database error deleting baseline:', err);
+            return res.status(500).json({
+              success: false,
+              error: 'Failed to unfreeze baseline budget'
+            });
+          }
+
+          if (this.changes === 0) {
+            return res.status(404).json({
+              success: false,
+              error: 'No baseline found for this project'
+            });
+          }
+
+          console.log(`✅ Baseline unfrozen for project ${projectId}`);
+
+          // Create notification
+          createNotification(
+            userId,
+            `Budget baseline unfrozen for project "${project.title}"`
+          );
+
+          res.json({
+            success: true,
+            message: 'Baseline budget unfrozen successfully'
+          });
+        }
+      );
     }
   );
 });

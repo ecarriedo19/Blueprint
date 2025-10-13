@@ -12,10 +12,20 @@ export interface Project {
   updated_at: string;
 }
 
+interface BulkActionInput {
+  projectIds: number[];
+  action: 'delete' | 'updateStatus' | 'updatePriority';
+  updates?: {
+    status?: string;
+    priority?: string;
+  };
+}
+
 interface ProjectContextType {
   addProject: (projectData: string | { name: string; description?: string; status?: string; priority?: string }, budget?: number, description?: string) => Promise<Project>;
   updateProject: (projectId: number, updates: Partial<Project>) => Promise<void>;
   deleteProject: (projectId: number) => Promise<void>;
+  bulkAction: (data: BulkActionInput) => Promise<any>;
 }
 
 interface ProjectProviderProps {
@@ -115,6 +125,27 @@ export const ProjectProvider: React.FC<ProjectProviderProps> = ({ children }) =>
     },
   });
 
+  const bulkActionMutation = useMutation({
+    mutationFn: async (data: BulkActionInput) => {
+      const response = await fetch('/api/projects/bulk', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(data),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to perform bulk action: ' + response.status);
+      }
+
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+    },
+  });
+
   const addProject = useCallback(async (
     projectData: string | { name: string; description?: string; status?: string; priority?: string }, 
     _budget?: number, 
@@ -155,10 +186,15 @@ export const ProjectProvider: React.FC<ProjectProviderProps> = ({ children }) =>
     await deleteProjectMutation.mutateAsync(projectId);
   }, [deleteProjectMutation]);
 
+  const bulkAction = useCallback(async (data: BulkActionInput): Promise<any> => {
+    return await bulkActionMutation.mutateAsync(data);
+  }, [bulkActionMutation]);
+
   const value: ProjectContextType = {
     addProject,
     updateProject,
     deleteProject,
+    bulkAction,
   };
 
   return (

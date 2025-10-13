@@ -4,6 +4,8 @@ import { useProjects } from '../utils/queries';
 import { useProjects as useProjectMutations } from '../contexts/ProjectState';
 import Card from './Card';
 import Button from './Button';
+import ConfirmationModal from './ConfirmationModal';
+import { MoreVertical, Trash2 } from 'lucide-react';
 
 interface User {
   id: number;
@@ -139,9 +141,12 @@ interface ProjectCardProps {
     updated_at: string;
   };
   onUpdate: (projectId: number, updates: any) => void;
+  isSelected?: boolean;
+  onSelect?: (id: number) => void;
+  showCheckbox?: boolean;
 }
 
-const ProjectCard: React.FC<ProjectCardProps> = ({ project, onUpdate }) => {
+const ProjectCard: React.FC<ProjectCardProps> = ({ project, onUpdate, isSelected = false, onSelect, showCheckbox = false }) => {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'planning': return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
@@ -164,8 +169,23 @@ const ProjectCard: React.FC<ProjectCardProps> = ({ project, onUpdate }) => {
   };
 
   return (
-    <Card className="hover:shadow-lg transition-all duration-200 border border-slate-200 dark:border-slate-700">
-      <div className="p-6">
+    <Card className="hover:shadow-lg transition-all duration-200 border border-slate-200 dark:border-slate-700 relative">
+      {/* Checkbox for selection */}
+      {showCheckbox && onSelect && (
+        <div className="absolute top-4 left-4 z-10" onClick={(e) => e.preventDefault()}>
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={(e) => {
+              e.stopPropagation();
+              onSelect(project.id);
+            }}
+            onClick={(e) => e.stopPropagation()}
+            className="w-5 h-5 rounded border-slate-600 bg-slate-800/50 text-blue-500 focus:ring-2 focus:ring-blue-500 cursor-pointer"
+          />
+        </div>
+      )}
+      <div className={`p-6 ${showCheckbox ? 'pl-12' : ''}`}>
         <div className="flex items-start justify-between mb-3">
           <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
             {project.name}
@@ -222,10 +242,13 @@ const ProjectCard: React.FC<ProjectCardProps> = ({ project, onUpdate }) => {
 
 const ProjectsPage: React.FC<ProjectsPageProps> = ({ currentUser }) => {
   const { data: projects = [], isLoading: loading, error } = useProjects();
-  const { addProject, updateProject } = useProjectMutations();
+  const { addProject, updateProject, bulkAction } = useProjectMutations();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterPriority, setFilterPriority] = useState('all');
+  const [selectedProjects, setSelectedProjects] = useState<number[]>([]);
+  const [showBulkActions, setShowBulkActions] = useState(false);
+  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
 
   // Role-based permission check
   const canModifyProjects = () => {
@@ -246,6 +269,27 @@ const ProjectsPage: React.FC<ProjectsPageProps> = ({ currentUser }) => {
       await updateProject(projectId, updates);
     } catch (error) {
       console.error('Failed to update project:', error);
+    }
+  };
+
+  const handleSelectProject = (projectId: number) => {
+    setSelectedProjects(prev =>
+      prev.includes(projectId)
+        ? prev.filter(id => id !== projectId)
+        : [...prev, projectId]
+    );
+  };
+
+  const handleBulkDelete = async () => {
+    try {
+      await bulkAction({
+        projectIds: selectedProjects,
+        action: 'delete'
+      });
+      setSelectedProjects([]);
+      setShowBulkDeleteModal(false);
+    } catch (error) {
+      console.error('Failed to delete projects:', error);
     }
   };
 
@@ -306,16 +350,55 @@ const ProjectsPage: React.FC<ProjectsPageProps> = ({ currentUser }) => {
           </select>
         </div>
 
-        {canModifyProjects() && (
+        <div className="flex gap-3">
           <Button
-            onClick={() => setIsCreateModalOpen(true)}
-            variant="primary"
-            className="whitespace-nowrap"
+            onClick={() => setShowBulkActions(!showBulkActions)}
+            variant="secondary"
+            className="flex items-center gap-2"
           >
-            + Create Project
+            <MoreVertical className="w-4 h-4" />
+            Options
           </Button>
-        )}
+          {canModifyProjects() && (
+            <Button
+              onClick={() => setIsCreateModalOpen(true)}
+              variant="primary"
+              className="whitespace-nowrap"
+            >
+              + Create Project
+            </Button>
+          )}
+        </div>
       </div>
+
+      {/* Bulk Actions Toolbar */}
+      {showBulkActions && selectedProjects.length > 0 && (
+        <Card variant="glass" className="mb-6 p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-white font-medium">
+              {selectedProjects.length} project{selectedProjects.length > 1 ? 's' : ''} selected
+            </span>
+            <div className="flex gap-2">
+              <Button
+                variant="secondary"
+                onClick={() => setSelectedProjects([])}
+                size="sm"
+              >
+                Clear Selection
+              </Button>
+              <Button
+                variant="danger"
+                onClick={() => setShowBulkDeleteModal(true)}
+                size="sm"
+                className="flex items-center gap-2"
+              >
+                <Trash2 className="w-4 h-4" />
+                Delete Selected
+              </Button>
+            </div>
+          </div>
+        </Card>
+      )}
 
       {filteredProjects.length === 0 ? (
         <div className="text-center py-12">
@@ -350,6 +433,9 @@ const ProjectsPage: React.FC<ProjectsPageProps> = ({ currentUser }) => {
               <ProjectCard
                 project={project}
                 onUpdate={handleUpdateProject}
+                isSelected={selectedProjects.includes(project.id)}
+                onSelect={handleSelectProject}
+                showCheckbox={showBulkActions}
               />
             </Link>
           ))}
@@ -360,6 +446,17 @@ const ProjectsPage: React.FC<ProjectsPageProps> = ({ currentUser }) => {
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
         onSubmit={handleCreateProject}
+      />
+      
+      <ConfirmationModal
+        isOpen={showBulkDeleteModal}
+        onCancel={() => setShowBulkDeleteModal(false)}
+        onConfirm={handleBulkDelete}
+        title="Delete Multiple Projects"
+        message={`Are you sure you want to delete ${selectedProjects.length} project${selectedProjects.length > 1 ? 's' : ''}? This action cannot be undone and will permanently delete all quotes, line items, change orders, and actual costs associated with ${selectedProjects.length > 1 ? 'these projects' : 'this project'}.`}
+        confirmText="Yes, Delete All"
+        cancelText="Cancel"
+        type="danger"
       />
     </div>
   );

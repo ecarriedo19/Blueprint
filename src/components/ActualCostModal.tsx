@@ -1,41 +1,34 @@
 import React, { useState, useEffect } from 'react';
 import Button from './Button';
 import Card from './Card';
-import { useQuotes } from '../contexts/QuoteContext';
-import { useCostCodes } from '../utils/queries';
-import { Search } from 'lucide-react';
+import { useCostCodes, type ActualCost } from '../utils/queries';
+import { useVendors } from '../contexts/VendorContext';
+import { useActualCostMutations } from '../contexts/ActualCostContext';
+import { Search, Calendar, DollarSign, FileText } from 'lucide-react';
 
-interface LineItem {
-  id?: number;
-  description: string;
-  estimatedCost: number;
-  actualCost?: number;
-  cost_code_id?: number;
-}
-
-interface LineItemModalProps {
+interface ActualCostModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess?: (message: string, type?: 'success' | 'error') => void;
-  itemToEdit?: LineItem | null;
-  quoteId: number;
+  projectId: number;
+  actualCostToEdit?: ActualCost | null;
 }
 
-const LineItemModal: React.FC<LineItemModalProps> = ({ 
+const ActualCostModal: React.FC<ActualCostModalProps> = ({ 
   isOpen, 
   onClose, 
   onSuccess, 
-  itemToEdit, 
-  quoteId 
+  projectId,
+  actualCostToEdit
 }) => {
-  const { addLineItem, updateLineItem } = useQuotes();
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { addActualCost, updateActualCost, isAddingActualCost, isUpdatingActualCost } = useActualCostMutations();
   const [costCodeSearch, setCostCodeSearch] = useState('');
   const [formData, setFormData] = useState({
+    cost_code_id: undefined as number | undefined,
+    amount: 0,
+    date: new Date().toISOString().split('T')[0], // Today's date in YYYY-MM-DD format
     description: '',
-    estimatedCost: 0,
-    actualCost: 0,
-    cost_code_id: undefined as number | undefined
+    vendor_id: undefined as number | undefined
   });
 
   // Fetch cost codes with search filter
@@ -44,41 +37,42 @@ const LineItemModal: React.FC<LineItemModalProps> = ({
     includeTemplates: true
   });
 
+  // Fetch vendors
+  const { vendors = [] } = useVendors();
+
+  // Get selected cost code for display
+  const selectedCostCode = allCostCodes.find(code => code.id === formData.cost_code_id);
+
   // Reset form when modal opens - populate with edit data if available
   useEffect(() => {
     if (isOpen) {
-      if (itemToEdit) {
+      if (actualCostToEdit) {
         // Edit mode - populate with existing data
         setFormData({
-          description: itemToEdit.description,
-          estimatedCost: itemToEdit.estimatedCost,
-          actualCost: itemToEdit.actualCost || 0,
-          cost_code_id: itemToEdit.cost_code_id
+          cost_code_id: actualCostToEdit.cost_code_id,
+          amount: actualCostToEdit.amount,
+          date: actualCostToEdit.date,
+          description: actualCostToEdit.description || '',
+          vendor_id: actualCostToEdit.vendor_id || undefined
         });
       } else {
         // Create mode - reset to defaults
         setFormData({
+          cost_code_id: undefined,
+          amount: 0,
+          date: new Date().toISOString().split('T')[0],
           description: '',
-          estimatedCost: 0,
-          actualCost: 0,
-          cost_code_id: undefined
+          vendor_id: undefined
         });
       }
       setCostCodeSearch(''); // Reset search when modal opens
     }
-  }, [isOpen, itemToEdit]);
-
-  // Get selected cost code for display
-  const selectedCostCode = allCostCodes.find(code => code.id === formData.cost_code_id);
+  }, [isOpen, actualCostToEdit]);
 
   // Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.description.trim()) {
-      return;
-    }
-
     if (!formData.cost_code_id) {
       if (onSuccess) {
         onSuccess('Please select a cost code', 'error');
@@ -86,33 +80,49 @@ const LineItemModal: React.FC<LineItemModalProps> = ({
       return;
     }
 
-    setIsSubmitting(true);
+    if (!formData.amount || formData.amount <= 0) {
+      if (onSuccess) {
+        onSuccess('Amount must be greater than 0', 'error');
+      }
+      return;
+    }
+
+    if (!formData.date) {
+      if (onSuccess) {
+        onSuccess('Date is required', 'error');
+      }
+      return;
+    }
 
     try {
-      if (itemToEdit) {
-        // Edit mode - use mutation from context (this will trigger cache invalidation)
-        await updateLineItem(itemToEdit.id!, quoteId, formData);
+      if (actualCostToEdit) {
+        // Edit mode
+        await updateActualCost(projectId, actualCostToEdit.id, formData);
+        if (onSuccess) {
+          onSuccess('Actual cost updated successfully!');
+        }
       } else {
-        // Create mode - use mutation from context (this will trigger cache invalidation)
-        await addLineItem(quoteId, formData);
-      }
-
-      // Success feedback
-      if (onSuccess) {
-        onSuccess(`Line item ${itemToEdit ? 'updated' : 'created'} successfully!`);
+        // Create mode
+        await addActualCost(projectId, formData);
+        if (onSuccess) {
+          onSuccess('Actual cost logged successfully!');
+        }
       }
       
       // Close modal
       onClose();
     } catch (error) {
-      console.error(`Failed to ${itemToEdit ? 'update' : 'create'} line item:`, error);
+      console.error(`Failed to ${actualCostToEdit ? 'update' : 'create'} actual cost:`, error);
       
       // Error feedback
       if (onSuccess) {
-        onSuccess(`Failed to ${itemToEdit ? 'update' : 'save'} line item. Please try again.`, 'error');
+        onSuccess(
+          error instanceof Error 
+            ? error.message 
+            : `Failed to ${actualCostToEdit ? 'update' : 'save'} actual cost. Please try again.`, 
+          'error'
+        );
       }
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -154,24 +164,26 @@ const LineItemModal: React.FC<LineItemModalProps> = ({
 
   if (!isOpen) return null;
 
+  const isSubmitting = isAddingActualCost || isUpdatingActualCost;
+
   return (
     <div 
       className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm overflow-y-auto"
       onClick={handleOverlayClick}
     >
       <div className="min-h-screen flex items-center justify-center p-4 py-8">
-        <div className="w-full max-w-lg my-8">
+        <div className="w-full max-w-2xl my-8">
           <Card variant="glass" className="relative animate-fade-in">
             {/* Modal Header */}
             <div className="flex items-center justify-between mb-8">
               <div>
                 <h2 className="text-2xl font-bold text-white mb-2">
-                  {itemToEdit ? 'Edit Line Item' : 'Add Line Item'}
+                  {actualCostToEdit ? 'Edit Actual Cost' : 'Log New Expense'}
                 </h2>
                 <p className="text-slate-400">
-                  {itemToEdit 
-                    ? 'Update the details below to modify this line item.'
-                    : 'Fill in the details below to add a new line item to this quote.'
+                  {actualCostToEdit 
+                    ? 'Update the details below to modify this expense entry.'
+                    : 'Record an actual expense for this project to track budget vs. actuals.'
                   }
                 </p>
               </div>
@@ -187,21 +199,6 @@ const LineItemModal: React.FC<LineItemModalProps> = ({
 
             {/* Form */}
             <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Description */}
-              <div>
-                <label className="block text-sm font-semibold text-slate-300 mb-3">
-                  Description *
-                </label>
-                <input
-                  type="text"
-                  value={formData.description}
-                  onChange={(e) => handleInputChange('description', e.target.value)}
-                  className="w-full px-4 py-4 bg-slate-800/50 border border-slate-600/50 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                  placeholder="e.g., Foundation Work, Electrical Installation"
-                  required
-                />
-              </div>
-
               {/* Cost Code Selection */}
               <div>
                 <label className="block text-sm font-semibold text-slate-300 mb-3">
@@ -238,7 +235,7 @@ const LineItemModal: React.FC<LineItemModalProps> = ({
                               {codes.map(code => (
                                 <option key={code.id} value={code.id}>
                                   {code.code} - {code.description}
-                                  {code.is_template ? ' (CSI Template)' : ''}
+                                  {code.is_template ? ' (CSI)' : ''}
                                 </option>
                               ))}
                             </optgroup>
@@ -264,67 +261,81 @@ const LineItemModal: React.FC<LineItemModalProps> = ({
                 </div>
               </div>
 
-              {/* Cost Fields - Two Column Layout */}
+              {/* Amount and Date - Two Column Layout */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Estimated Cost */}
+                {/* Amount */}
                 <div>
                   <label className="block text-sm font-semibold text-slate-300 mb-3">
-                    Estimated Cost
+                    Amount *
                   </label>
                   <div className="relative">
-                    <span className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400">$</span>
+                    <DollarSign className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5 pointer-events-none" />
                     <input
                       type="number"
-                      min="0"
+                      min="0.01"
                       step="0.01"
-                      value={formData.estimatedCost || ''}
-                      onChange={(e) => handleInputChange('estimatedCost', e.target.value ? parseFloat(e.target.value) : 0)}
-                      className="w-full pl-8 pr-4 py-4 bg-slate-800/50 border border-slate-600/50 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                      value={formData.amount || ''}
+                      onChange={(e) => handleInputChange('amount', e.target.value ? parseFloat(e.target.value) : 0)}
+                      className="w-full pl-12 pr-4 py-4 bg-slate-800/50 border border-slate-600/50 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                       placeholder="0.00"
+                      required
                     />
                   </div>
                 </div>
 
-                {/* Actual Cost */}
+                {/* Date */}
                 <div>
                   <label className="block text-sm font-semibold text-slate-300 mb-3">
-                    Actual Cost
+                    Date *
                   </label>
                   <div className="relative">
-                    <span className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400">$</span>
+                    <Calendar className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5 pointer-events-none" />
                     <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={formData.actualCost || ''}
-                      onChange={(e) => handleInputChange('actualCost', e.target.value ? parseFloat(e.target.value) : 0)}
-                      className="w-full pl-8 pr-4 py-4 bg-slate-800/50 border border-slate-600/50 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                      placeholder="0.00"
+                      type="date"
+                      value={formData.date}
+                      onChange={(e) => handleInputChange('date', e.target.value)}
+                      className="w-full pl-12 pr-4 py-4 bg-slate-800/50 border border-slate-600/50 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                      required
                     />
                   </div>
                 </div>
               </div>
 
-              {/* Variance Preview */}
-              {(formData.estimatedCost > 0 || formData.actualCost > 0) && (
-                <div className="p-4 bg-slate-800/30 border border-slate-700/50 rounded-xl">
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-300 text-sm">Variance:</span>
-                    <span className={`text-sm font-semibold ${
-                      formData.actualCost > formData.estimatedCost 
-                        ? 'text-red-400' 
-                        : formData.actualCost < formData.estimatedCost 
-                          ? 'text-green-400' 
-                          : 'text-slate-300'
-                    }`}>
-                      {formData.estimatedCost > 0 
-                        ? `${((formData.actualCost - formData.estimatedCost) / formData.estimatedCost * 100).toFixed(1)}%`
-                        : 'N/A'
-                      }
-                    </span>
-                  </div>
+              {/* Vendor */}
+              <div>
+                <label className="block text-sm font-semibold text-slate-300 mb-3">
+                  Vendor (Optional)
+                </label>
+                <select
+                  value={formData.vendor_id || ''}
+                  onChange={(e) => handleInputChange('vendor_id', e.target.value ? parseInt(e.target.value) : undefined)}
+                  className="w-full px-4 py-4 bg-slate-800/50 border border-slate-600/50 rounded-xl text-white appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 cursor-pointer"
+                >
+                  <option value="">Select a vendor (optional)...</option>
+                  {vendors.map(vendor => (
+                    <option key={vendor.id} value={vendor.id}>
+                      {vendor.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Description */}
+              <div>
+                <label className="block text-sm font-semibold text-slate-300 mb-3">
+                  Description (Optional)
+                </label>
+                <div className="relative">
+                  <FileText className="absolute left-4 top-4 text-slate-400 w-5 h-5 pointer-events-none" />
+                  <textarea
+                    value={formData.description}
+                    onChange={(e) => handleInputChange('description', e.target.value)}
+                    className="w-full pl-12 pr-4 py-4 bg-slate-800/50 border border-slate-600/50 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 resize-vertical min-h-[100px]"
+                    placeholder="e.g., Invoice #12345 for concrete delivery"
+                    rows={3}
+                  />
                 </div>
-              )}
+              </div>
 
               {/* Action Buttons */}
               <div className="flex gap-4 pt-6 border-t border-slate-700/50">
@@ -341,10 +352,10 @@ const LineItemModal: React.FC<LineItemModalProps> = ({
                   type="submit"
                   variant="primary"
                   loading={isSubmitting}
-                  disabled={!formData.description.trim() || !formData.cost_code_id || isSubmitting}
+                  disabled={!formData.cost_code_id || !formData.amount || !formData.date || isSubmitting}
                   className="flex-1"
                 >
-                  {itemToEdit ? 'Update Line Item' : 'Add Line Item'}
+                  {actualCostToEdit ? 'Update Expense' : 'Log Expense'}
                 </Button>
               </div>
             </form>
@@ -355,4 +366,5 @@ const LineItemModal: React.FC<LineItemModalProps> = ({
   );
 };
 
-export default LineItemModal;
+export default ActualCostModal;
+
