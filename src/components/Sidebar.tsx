@@ -1,104 +1,95 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Briefcase, FileText, BrainCircuit, Link as LinkIcon, Settings, LogOut, ChevronFirst, ChevronLast, Truck, BarChart3 } from 'lucide-react';
+import { Home, Briefcase, FileText, BrainCircuit, Link as LinkIcon, Truck, BarChart3 } from 'lucide-react';
+import UserMenu from './shared/UserMenu';
 
 interface SidebarProps {
   isSidebarOpen: boolean;
   toggleSidebar: () => void;
-  currentUser: any;
   onLogout: () => Promise<void>;
 }
 
 const SidebarContext = React.createContext({ isSidebarOpen: true });
 
-const Sidebar: React.FC<SidebarProps> = ({ isSidebarOpen, toggleSidebar, currentUser, onLogout }) => {
-  // Helper function to construct absolute URLs for images
-  const getAbsoluteImageUrl = (relativePath: string | null): string | null => {
-    if (!relativePath) return null;
-    if (relativePath.startsWith('http')) return relativePath; // Already absolute
-    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
-    return `${apiBaseUrl}${relativePath}`;
-  };
+const Sidebar: React.FC<SidebarProps> = ({ isSidebarOpen, toggleSidebar, onLogout }) => {
 
   return (
-    <aside className={`h-screen transition-all duration-300 ease-in-out ${isSidebarOpen ? 'w-64' : 'w-20'}`}>
-      <nav className="h-full flex flex-col bg-white/5 dark:bg-white/5 border-r border-gray-200/50 dark:border-white/10 backdrop-blur-xl shadow-2xl overflow-visible">
-        <div className="p-4 pb-2 flex justify-end items-center">
-          <button 
-            onClick={toggleSidebar} 
-            className="p-1.5 rounded-lg bg-gray-100/20 dark:bg-gray-50/5 hover:bg-gray-100/30 dark:hover:bg-gray-50/10 transition-colors duration-200"
-          >
-            {isSidebarOpen ? (
-              <ChevronFirst className="text-gray-600 dark:text-gray-300" />
-            ) : (
-              <ChevronLast className="text-gray-600 dark:text-gray-300" />
-            )}
-          </button>
-        </div>
+    <aside className={`relative h-screen transition-all duration-300 ease-in-out ${isSidebarOpen ? 'w-64' : 'w-20'}`}>
+      <nav className="h-full flex flex-col bg-card border-r border-border shadow-sm overflow-visible">
+        <div className="p-4 pb-2"></div>
 
         <SidebarContext.Provider value={{ isSidebarOpen }}>
-          <ul className="flex-1 px-3">
+          <ul className="flex-1 px-3 py-2">
+            {/* Main Section */}
+            <SidebarHeader text="Main" />
             <Link to="/">
-              <SidebarItem icon={<Home size={20} />} text="Home" path="/" />
+              <SidebarItem icon={<Home className="w-4 h-4" />} text="Home" path="/" />
             </Link>
             <Link to="/projects">
-              <SidebarItem icon={<Briefcase size={20} />} text="Projects" path="/projects" />
+              <SidebarItem icon={<Briefcase className="w-4 h-4" />} text="Projects" path="/projects" />
             </Link>
             <Link to="/quotes">
-              <SidebarItem icon={<FileText size={20} />} text="Quotes" path="/quotes" />
+              <SidebarItem icon={<FileText className="w-4 h-4" />} text="Quotes" path="/quotes" />
+            </Link>
+
+            {/* Analytics Section */}
+            <SidebarHeader text="Analytics" />
+            <Link to="/reports">
+              <SidebarItem icon={<BarChart3 className="w-4 h-4" />} text="Reports" path="/reports" />
             </Link>
             <Link to="/ai-copilot">
-              <SidebarItem icon={<BrainCircuit size={20} />} text="AI-Copilot" path="/ai-copilot" />
+              <SidebarItem icon={<BrainCircuit className="w-4 h-4" />} text="AI Copilot" path="/ai-copilot" />
             </Link>
-            <Link to="/reports">
-              <SidebarItem icon={<BarChart3 size={20} />} text="Reports" path="/reports" />
-            </Link>
+
+            {/* Management Section */}
+            <SidebarHeader text="Management" />
             <Link to="/vendors">
-              <SidebarItem icon={<Truck size={20} />} text="Vendors Data" path="/vendors" />
+              <SidebarItem icon={<Truck className="w-4 h-4" />} text="Vendors" path="/vendors" />
             </Link>
             <Link to="/integrations">
-              <SidebarItem icon={<LinkIcon size={20} />} text="Integrations" path="/integrations" />
+              <SidebarItem icon={<LinkIcon className="w-4 h-4" />} text="Integrations" path="/integrations" />
             </Link>
           </ul>
         </SidebarContext.Provider>
 
-        <div className="border-t border-gray-200/50 dark:border-white/10 flex p-3">
-          <img
-            src={getAbsoluteImageUrl(currentUser?.profilePictureUrl) || `https://ui-avatars.com/api/?background=c7d2fe&color=3730a3&bold=true&name=${encodeURIComponent(currentUser?.name || 'User')}`}
-            alt=""
-            className="w-10 h-10 rounded-md"
-          />
-          <div className={`flex justify-between items-center overflow-hidden transition-all ${isSidebarOpen ? 'w-52 ml-3' : 'w-0'}`}>
-            <div className="leading-4">
-              <div className="flex items-center gap-2">
-                <h4 className="font-semibold text-gray-800 dark:text-white">{currentUser?.name || 'Loading...'}</h4>
-                {currentUser?.subscriptionStatus === 'active' ? (
-                  <span className="px-2 py-0.5 text-xs font-medium bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-full">
-                    Pro
-                  </span>
-                ) : (
-                  <span className="px-2 py-0.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-full">
-                    Free
-                  </span>
-                )}
-              </div>
-              <span className="text-xs text-gray-500 dark:text-gray-400">{currentUser?.email || 'Loading...'}</span>
-            </div>
-          </div>
+        {/* User Menu */}
+        <UserMenu onLogout={onLogout} />
+      </nav>
+      
+      {/* Stripe-style Collapse Bar */}
+      <div 
+        className="absolute top-1/2 -right-[1px] transform -translate-y-1/2 group cursor-pointer z-10"
+        onClick={toggleSidebar}
+      >
+        {/* Vertical Bar */}
+        <div className="w-3 h-12 bg-border hover:bg-muted-foreground/30 transition-colors duration-200 rounded-r-md flex items-center justify-center">
+          <div className="w-[1px] h-6 bg-muted-foreground/40"></div>
         </div>
         
-        <ul className="px-3 pb-3">
-            <Link to="/settings">
-              <SidebarItem icon={<Settings size={20} />} text="Settings" path="/settings" />
-            </Link>
-            <div onClick={onLogout}>
-              <SidebarItem icon={<LogOut size={20} />} text="Logout" />
-            </div>
-        </ul>
-      </nav>
+        {/* Tooltip */}
+        <div className="absolute left-full top-1/2 transform -translate-y-1/2 ml-2 px-2 py-1 bg-foreground text-background text-xs font-medium rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-20">
+          {isSidebarOpen ? 'Collapse' : 'Expand'}
+        </div>
+      </div>
     </aside>
   );
 };
+
+interface SidebarHeaderProps {
+  text: string;
+}
+
+function SidebarHeader({ text }: SidebarHeaderProps) {
+  const { isSidebarOpen } = React.useContext(SidebarContext);
+  
+  return (
+    <li className={`px-4 mt-6 mb-2 first:mt-2 ${isSidebarOpen ? 'block' : 'hidden'}`}>
+      <h4 className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider">
+        {text}
+      </h4>
+    </li>
+  );
+}
 
 interface SidebarItemProps {
   icon: React.ReactNode;
@@ -115,18 +106,30 @@ function SidebarItem({ icon, text, path, alert }: SidebarItemProps) {
   return (
     <li
       className={`
-        relative flex items-center py-2 px-3 my-1
-        font-medium rounded-md cursor-pointer
-        transition-colors group
+        relative flex items-center py-2 px-4 mb-1
+        text-sm font-medium rounded-md cursor-pointer
+        transition-colors duration-150 group
         ${isActive 
-          ? 'bg-gradient-to-tr from-indigo-200/80 to-indigo-100/80 dark:from-indigo-200 dark:to-indigo-100 text-indigo-800 dark:text-indigo-800' 
-          : 'hover:bg-gray-100/50 dark:hover:bg-indigo-50/10 text-gray-600 dark:text-gray-300'
+          ? 'bg-muted text-primary' 
+          : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
         }
-    `}
+      `}
     >
-      <span className={isActive ? 'text-indigo-600' : 'text-gray-500 dark:text-gray-400'}>{icon}</span>
-      <span className={`overflow-hidden transition-all ${isSidebarOpen ? 'w-52 ml-3' : 'w-0'}`}>{text}</span>
-      {alert && <div className={`absolute right-2 w-2 h-2 rounded bg-indigo-400 ${isSidebarOpen ? '' : 'top-2'}`} />}
+      <span className={`transition-colors duration-150 ${
+        isActive ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground'
+      }`}>
+        {icon}
+      </span>
+      <span className={`overflow-hidden transition-all duration-300 text-sm ${
+        isSidebarOpen ? 'w-52 ml-3' : 'w-0'
+      }`}>
+        {text}
+      </span>
+      {alert && (
+        <div className={`absolute right-3 w-1.5 h-1.5 rounded-full bg-primary ${
+          isSidebarOpen ? '' : 'top-2 right-2'
+        }`} />
+      )}
     </li>
   );
 }

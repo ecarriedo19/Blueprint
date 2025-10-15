@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import Button from './Button';
 import Card from './Card';
-import { Lock, Unlock, Calendar, User, FileText, AlertCircle } from 'lucide-react';
+import { Lock, Unlock, Calendar, FileText, AlertCircle } from 'lucide-react';
 import type { BudgetSummary } from '../utils/queries';
 
 interface BaselineBudgetControlsProps {
@@ -93,22 +93,22 @@ const BaselineBudgetControls: React.FC<BaselineBudgetControlsProps> = ({
   if (!baselineFrozen) {
     return (
       <>
-        <Card variant="glass">
+        <Card variant="default">
           <div className="flex items-start justify-between">
             <div className="flex items-start gap-4">
-              <div className="p-3 bg-blue-500/20 border border-blue-500/30 rounded-lg">
-                <Unlock className="w-6 h-6 text-blue-400" />
+              <div className="p-3 bg-primary/10 border border-primary/20 rounded-lg">
+                <Unlock className="w-6 h-6 text-primary" />
               </div>
               <div>
-                <h3 className="text-lg font-semibold text-white mb-2">
+                <h3 className="text-lg font-semibold text-foreground mb-2">
                   Budget Baseline Not Frozen
                 </h3>
-                <p className="text-slate-400 text-sm max-w-2xl">
+                <p className="text-muted-foreground text-sm max-w-2xl">
                   Freeze your budget baseline to lock in current budgeted amounts for accurate variance tracking. 
                   This creates a snapshot of your approved quotes and change orders, preventing budget modifications 
                   from affecting historical analysis.
                 </p>
-                <div className="mt-4 flex items-center gap-2 text-sm text-slate-500">
+                <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
                   <AlertCircle className="w-4 h-4" />
                   <span>Only admins can freeze/unfreeze baselines</span>
                 </div>
@@ -131,23 +131,23 @@ const BaselineBudgetControls: React.FC<BaselineBudgetControlsProps> = ({
             className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
             onClick={(e) => e.target === e.currentTarget && setShowFreezeModal(false)}
           >
-            <Card variant="glass" className="max-w-lg w-full">
-              <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-                <Lock className="w-5 h-5 text-blue-400" />
+            <Card variant="default" className="max-w-lg w-full">
+              <h3 className="text-xl font-bold text-foreground mb-4 flex items-center gap-2">
+                <Lock className="w-5 h-5 text-primary" />
                 Freeze Budget Baseline
               </h3>
-              <p className="text-slate-300 mb-4">
+              <p className="text-muted-foreground mb-4">
                 This will create a snapshot of your current budget (approved quotes + change orders) for variance analysis. 
                 You won't be able to modify the budget until you unfreeze it.
               </p>
               <div className="mb-6">
-                <label className="block text-sm font-semibold text-slate-300 mb-2">
+                <label className="block text-sm font-semibold text-foreground mb-2">
                   Notes (Optional)
                 </label>
                 <textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  className="w-full px-4 py-3 bg-slate-800/50 border border-slate-600/50 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[100px]"
+                  className="w-full px-4 py-3 bg-background border border-border rounded-lg text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring min-h-[100px]"
                   placeholder="e.g., Q4 2024 baseline, Post-design changes freeze, etc."
                 />
               </div>
@@ -180,32 +180,32 @@ const BaselineBudgetControls: React.FC<BaselineBudgetControlsProps> = ({
   // Baseline is frozen - show info card
   return (
     <>
-      <Card variant="glass">
+      <Card variant="default">
         <div className="flex items-start justify-between">
           <div className="flex items-start gap-4">
-            <div className="p-3 bg-green-500/20 border border-green-500/30 rounded-lg">
-              <Lock className="w-6 h-6 text-green-400" />
+            <div className="p-3 bg-success/10 border border-success/20 rounded-lg">
+              <Lock className="w-6 h-6 text-success" />
             </div>
             <div className="flex-1">
-              <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+              <h3 className="text-lg font-semibold text-foreground mb-3 flex items-center gap-2">
                 Budget Baseline Frozen
-                <span className="px-2 py-1 bg-green-500/20 border border-green-500/30 rounded text-xs font-semibold text-green-400">
+                <span className="px-2 py-1 bg-success/10 border border-success/20 rounded text-xs font-semibold text-success">
                   LOCKED
                 </span>
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                <div className="flex items-center gap-2 text-slate-300">
-                  <Calendar className="w-4 h-4 text-slate-400" />
+                <div className="flex items-center gap-2 text-foreground">
+                  <Calendar className="w-4 h-4 text-muted-foreground" />
                   <span>Frozen: {new Date(baseline?.frozen_at || '').toLocaleString()}</span>
                 </div>
                 {baseline?.notes && (
-                  <div className="flex items-start gap-2 text-slate-300 md:col-span-2">
-                    <FileText className="w-4 h-4 text-slate-400 mt-0.5" />
+                  <div className="flex items-start gap-2 text-foreground md:col-span-2">
+                    <FileText className="w-4 h-4 text-muted-foreground mt-0.5" />
                     <span className="italic">"{baseline.notes}"</span>
                   </div>
                 )}
               </div>
-              <p className="text-slate-400 text-sm mt-3">
+              <p className="text-muted-foreground text-sm mt-3">
                 Budget is locked for accurate variance tracking. Unfreeze to allow budget modifications.
               </p>
             </div>
@@ -227,12 +227,12 @@ const BaselineBudgetControls: React.FC<BaselineBudgetControlsProps> = ({
           className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
           onClick={(e) => e.target === e.currentTarget && setShowUnfreezeModal(false)}
         >
-          <Card variant="glass" className="max-w-lg w-full">
-            <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-              <AlertCircle className="w-5 h-5 text-yellow-400" />
+          <Card variant="default" className="max-w-lg w-full">
+            <h3 className="text-xl font-bold text-foreground mb-4 flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 text-warning" />
               Unfreeze Budget Baseline
             </h3>
-            <p className="text-slate-300 mb-6">
+            <p className="text-muted-foreground mb-6">
               Are you sure you want to unfreeze the budget baseline? This will allow budget modifications 
               but may affect your variance analysis accuracy. You can freeze it again later.
             </p>
@@ -246,7 +246,7 @@ const BaselineBudgetControls: React.FC<BaselineBudgetControlsProps> = ({
                 Cancel
               </Button>
               <Button
-                variant="danger"
+                variant="destructive"
                 onClick={handleUnfreeze}
                 loading={unfreezeMutation.isPending}
                 className="flex-1 flex items-center justify-center gap-2"

@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { UploadCloud, FileText, X } from 'lucide-react';
 import { useQuotes } from '../contexts/QuoteContext';
 import Button from './Button';
-import Card from './Card';
 
 interface UploadQuoteModalProps {
   isOpen: boolean;
@@ -224,27 +224,25 @@ const UploadQuoteModal: React.FC<UploadQuoteModalProps> = ({ isOpen, onClose, on
 
   if (!isOpen) return null;
 
-  return (
-    <div 
-      className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm overflow-y-auto"
-      onClick={handleOverlayClick}
-    >
-      <div className="min-h-screen flex items-center justify-center p-4 py-8">
-        <div className="w-full max-w-2xl my-8">
-          <Card variant="glass" className="relative animate-fade-in z-50">
+  return createPortal(
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={handleOverlayClick}>
+      <div 
+        className="bg-background border border-border rounded-xl p-6 w-full max-w-2xl mx-4 shadow-lg"
+        onClick={(e) => e.stopPropagation()}
+      >
             {/* Modal Header */}
             <div className="flex items-center justify-between mb-8">
               <div>
-                <h2 className="text-2xl font-bold text-white mb-2">
+                <h2 className="text-2xl font-bold text-foreground mb-2">
                   Create Quote from Document
                 </h2>
-                <p className="text-slate-400">
+                <p className="text-muted-foreground">
                   Upload a PDF or text file containing a bill of materials, cost sheet, or other document to generate a quote using AI.
                 </p>
               </div>
               <button
                 onClick={onClose}
-                className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
               >
                 <X className="w-6 h-6" />
               </button>
@@ -258,8 +256,8 @@ const UploadQuoteModal: React.FC<UploadQuoteModalProps> = ({ isOpen, onClose, on
                   className={`
                     relative border-2 border-dashed rounded-2xl p-12 text-center transition-all duration-300 cursor-pointer
                     ${isDragOver 
-                      ? 'border-blue-400 bg-blue-500/10 scale-[1.02]' 
-                      : 'border-slate-600/50 hover:border-slate-500/70 hover:bg-white/5'
+                      ? 'border-primary bg-primary/10 scale-[1.02]' 
+                      : 'border-border hover:border-muted-foreground hover:bg-muted/50'
                     }
                   `}
                   onDragOver={handleDragOver}
@@ -279,22 +277,22 @@ const UploadQuoteModal: React.FC<UploadQuoteModalProps> = ({ isOpen, onClose, on
                     <div className={`
                       w-16 h-16 rounded-full flex items-center justify-center mb-4 transition-all duration-300
                       ${isDragOver 
-                        ? 'bg-blue-500/20 text-blue-400 scale-110' 
-                        : 'bg-slate-700/50 text-slate-400'
+                        ? 'bg-primary/20 text-primary scale-110' 
+                        : 'bg-muted text-muted-foreground'
                       }
                     `}>
                       <UploadCloud className="w-8 h-8" />
                     </div>
                     
-                    <h3 className="text-lg font-semibold text-white mb-2">
+                    <h3 className="text-lg font-semibold text-foreground mb-2">
                       {isDragOver ? 'Drop your file here' : 'Drag & drop your file here'}
                     </h3>
                     
-                    <p className="text-slate-400 mb-4">
-                      or <span className="text-blue-400 hover:text-blue-300 underline">click to browse</span>
+                    <p className="text-muted-foreground mb-4">
+                      or <span className="text-primary hover:text-primary/80 underline">click to browse</span>
                     </p>
                     
-                    <div className="text-sm text-slate-500">
+                    <div className="text-sm text-muted-foreground">
                       <p>Supported formats: PDF, Word, Excel, CSV, Text</p>
                       <p>Maximum file size: 10MB</p>
                     </div>
@@ -302,18 +300,18 @@ const UploadQuoteModal: React.FC<UploadQuoteModalProps> = ({ isOpen, onClose, on
                 </div>
               ) : (
                 /* Selected File Display */
-                <div className="border border-slate-600/50 rounded-2xl p-6 bg-slate-800/30">
+                <div className="border border-border rounded-2xl p-6 bg-muted/30">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-full bg-blue-500/20 flex items-center justify-center">
-                        <FileText className="w-6 h-6 text-blue-400" />
+                      <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center">
+                        <FileText className="w-6 h-6 text-primary" />
                       </div>
                       
                       <div>
-                        <h4 className="font-semibold text-white mb-1">
+                        <h4 className="font-semibold text-foreground mb-1">
                           {file.name}
                         </h4>
-                        <p className="text-sm text-slate-400">
+                        <p className="text-sm text-muted-foreground">
                           {formatFileSize(file.size)}
                         </p>
                       </div>
@@ -323,7 +321,7 @@ const UploadQuoteModal: React.FC<UploadQuoteModalProps> = ({ isOpen, onClose, on
                       variant="ghost"
                       size="sm"
                       onClick={handleClearFile}
-                      className="text-slate-400 hover:text-red-400"
+                      className="text-muted-foreground hover:text-destructive"
                     >
                       <X className="w-4 h-4" />
                     </Button>
@@ -372,10 +370,9 @@ const UploadQuoteModal: React.FC<UploadQuoteModalProps> = ({ isOpen, onClose, on
                 {isProcessing ? 'Creating Quote...' : 'Create'}
               </Button>
             </div>
-          </Card>
-        </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

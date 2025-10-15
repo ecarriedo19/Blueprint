@@ -3,12 +3,13 @@
 ## Architecture Overview
 
 Blueprint is a construction industry SaaS platform with a **hybrid full-stack architecture**:
-- **Frontend**: React 18 + TypeScript + Vite + TailwindCSS
+- **Frontend**: React 18 + TypeScript + Vite + TailwindCSS + Framer Motion
 - **Backend**: Express.js server (CommonJS) with SQLite for user data
-- **AI/RAG**: Supabase vector database + Transformers.js for knowledge retrieval
+- **AI/RAG**: Supabase vector database + Transformers.js for knowledge retrieval + Gemini API
 - **Auth**: Google OAuth + Express sessions with SQLite storage
 - **File Processing**: Multer + PDF-parse for document AI analysis
 - **Real-time**: WebSocket server for notifications and live updates
+- **UI/UX**: Modern design system with glassmorphism, animations, and command palette
 
 ## Key Architectural Patterns
 
@@ -208,16 +209,27 @@ React Router with nested routes in `DashboardLayout.tsx`:
 # Backend + Frontend together (preferred - uses concurrently)
 npm start  # Runs: concurrently "npm run dev" "node server.cjs"
 
-# Or use VS Code task (available in workspace)
-# Task: "Start Backend and Frontend" (runs as background process)
-
 # Or individually:
 node server.cjs  # Backend only (:4000)
 npm run dev      # Frontend only (:5173, separate terminal)
 ```
 
+### Development Environment Features
+- **Auto-Refresh**: Custom Vite plugin monitors backend restart and auto-refreshes browser
+- **Proxy Setup**: `/api` requests automatically proxied from `:5173` to `:4000`
+- **Hot Module Replacement**: Frontend changes reflected instantly via Vite HMR
+- **Session Persistence**: Express sessions maintain auth state across browser refreshes
+
 ### Task Management with Task Master AI
-Integrated `task-master-ai` for AI-driven development workflow:
+Integrated `task-master-ai` for AI-driven development workflow with dual interaction modes:
+
+**MCP Server Integration (Preferred for AI agents):**
+- Available in Cursor/VS Code via Model Context Protocol 
+- Provides structured tools: `get_tasks`, `add_subtask`, `set_task_status`, etc.
+- Better performance and error handling than CLI parsing
+- Restart MCP server when core logic changes
+
+**CLI Commands (Fallback and direct usage):**
 ```bash
 # Initialize task management (if starting fresh)
 npx task-master-ai init
@@ -236,7 +248,34 @@ npx task-master-ai set-status --id=1 --status=done
 
 # Break down complex tasks into subtasks
 npx task-master-ai expand --id=5 --num=3
+
+# Analyze task complexity with research
+npx task-master-ai analyze-complexity --research
+
+# Update tasks when implementation drifts
+npx task-master-ai update --from=4 --prompt="Using Express instead of Fastify"
 ```
+
+**Task File Structure:**
+- `tasks/tasks.json`: Main task registry with dependencies and status
+- `tasks/task_001.txt`, `tasks/task_002.txt`: Individual detailed task files
+- Supports subtasks with dot notation (e.g., `1.1`, `1.2`) and dependency chains
+
+### Modern UI Development Patterns
+**Component Showcase & Testing:**
+- Use `/showcase` route for testing UI components in development
+- Component showcase displays all variants: buttons, cards, loading states
+- Phase-based UI development for systematic enhancement
+
+**Animation System:**
+- Reusable Framer Motion variants in `src/utils/animations.ts`
+- Standard 300ms timing for balanced UX
+- Consistent hover effects: `hoverScale`, `hoverLift`
+
+**Loading & Skeleton States:**
+- `SkeletonCard.tsx` with shimmer effects
+- Variants: card, stat, chart, text
+- Dark mode compatible with smooth transitions
 
 ### Testing Strategy
 E2E testing with Cypress configured for Blueprint's dual-server setup:
@@ -257,6 +296,12 @@ npm run cy:open
 - Backend API: `http://localhost:4000` for programmatic operations
 - Tests in `cypress/e2e/` directory (.cy.js files)
 - Custom commands in `cypress/support/commands.js`
+
+**Testing Patterns:**
+- **Programmatic Login**: Uses `cy.login()` custom command that calls `/api/test/login` endpoint
+- **Test Data**: Predefined test user (`test@blueprint.com`) with active subscription
+- **Session Persistence**: Tests verify auth state survives page refreshes
+- **Security Testing**: Validates unauthorized access protection
 
 ### Environment Setup
 Complete `.env` configuration (all variables shown in actual .env file):
@@ -287,12 +332,19 @@ npm run setup-rag    # Alias for embed script
 npm run setup-supabase  # Initial Supabase table setup
 ```
 
-## Styling Conventions
+## Modern UI/UX System
+
+### Design System & Components
+- **Component Library**: Consistent design system in `src/components/`
+- **Animation System**: Framer Motion variants in `src/utils/animations.ts`
+- **Loading States**: Skeleton components with shimmer animation (`SkeletonCard.tsx`)
+- **Color Palette**: Financial colors (green/red), brand gradients, AI purple accents
 
 ### TailwindCSS + Dark Mode
 - Use `dark:` prefix for dark mode variants
 - Glass morphism: `bg-white/10 backdrop-blur-sm border border-white/20`
 - Gradients: `bg-gradient-to-r from-blue-500 to-purple-500`
+- Consistent animations: 300ms duration for balanced UX
 
 ### Theme System
 Toggle via `ThemeContext.tsx`:
@@ -300,6 +352,11 @@ Toggle via `ThemeContext.tsx`:
 const { theme, toggleTheme } = useTheme();
 // Applies 'dark' class to <html> element
 ```
+
+### Command Palette & Search
+- Global search: `⌘K` shortcut opens search modal
+- Inline search: Real-time search with keyboard navigation
+- Results display: Projects, quotes, vendors with type indicators
 
 ## AI Integration Points
 
@@ -395,6 +452,18 @@ Multer configuration for document analysis:
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10MB } });
 // Supports PDF via pdf-parse and text files for AI analysis
 ```
+
+### Custom Development Tools
+**Backend Watch Plugin**: Custom Vite plugin (`vite-plugin-backend-watch.ts`) that:
+- Monitors backend server availability every 1.5 seconds
+- Auto-refreshes browser when backend restarts
+- Provides seamless development experience during server changes
+
+**Development Environment Setup:**
+- Use `npm start` for concurrent frontend/backend development
+- Vite proxy setup routes `/api` requests to `:4000`
+- WebSocket connection for real-time features
+- Session persistence across browser refreshes
 
 ## Construction Industry Context
 

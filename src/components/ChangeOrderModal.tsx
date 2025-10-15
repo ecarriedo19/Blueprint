@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import Button from './Button';
-import Card from './Card';
 import { useCostCodes } from '../utils/queries';
 import { Search } from 'lucide-react';
 
@@ -201,14 +200,14 @@ const ChangeOrderModal: React.FC<ChangeOrderModalProps> = ({
     >
       <div className="min-h-screen flex items-center justify-center p-4 py-8">
         <div className="w-full max-w-2xl my-8">
-          <Card variant="glass" className="relative animate-fade-in z-50">
+          <div className="bg-card border border-border rounded-lg p-6 relative animate-fade-in z-50">
             {/* Modal Header */}
             <div className="flex items-center justify-between mb-8">
               <div>
-                <h2 className="text-2xl font-bold text-white mb-2">
+                <h2 className="text-2xl font-bold text-foreground mb-2">
                   {changeOrderToEdit ? 'Edit Change Order' : 'Create New Change Order'}
                 </h2>
-                <p className="text-slate-400">
+                <p className="text-muted-foreground">
                   {changeOrderToEdit 
                     ? 'Update the details below to modify this change order.'
                     : 'Fill in the details below to create a new change order for this quote.'
@@ -217,7 +216,7 @@ const ChangeOrderModal: React.FC<ChangeOrderModalProps> = ({
               </div>
               <button
                 onClick={onClose}
-                className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                className="p-2 text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg transition-colors"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -229,13 +228,13 @@ const ChangeOrderModal: React.FC<ChangeOrderModalProps> = ({
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Description - Full Width */}
               <div>
-                <label className="block text-sm font-semibold text-slate-300 mb-3">
+                <label className="block text-sm font-semibold text-foreground mb-3">
                   Description *
                 </label>
                 <textarea
                   value={formData.description}
                   onChange={(e) => handleInputChange('description', e.target.value)}
-                  className="w-full px-4 py-4 bg-slate-800/50 border border-slate-600/50 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 resize-vertical min-h-[100px]"
+                  className="w-full px-4 py-4 bg-background border border-border rounded-xl text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all duration-200 resize-vertical min-h-[100px]"
                   placeholder="e.g., Add additional electrical outlets in conference room"
                   required
                   rows={3}
@@ -244,17 +243,17 @@ const ChangeOrderModal: React.FC<ChangeOrderModalProps> = ({
 
               {/* Cost Code Selection */}
               <div>
-                <label className="block text-sm font-semibold text-slate-300 mb-3">
+                <label className="block text-sm font-semibold text-foreground mb-3">
                   Cost Code *
                 </label>
                 <div className="relative">
                   <div className="relative">
-                    <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5 pointer-events-none z-10" />
+                    <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-muted-foreground w-5 h-5 pointer-events-none z-10" />
                     <select
                       value={formData.cost_code_id || ''}
                       onChange={(e) => handleInputChange('cost_code_id', e.target.value ? parseInt(e.target.value) : undefined)}
                       onFocus={() => setCostCodeSearch('')}
-                      className="w-full pl-12 pr-4 py-4 bg-slate-800/50 border border-slate-600/50 rounded-xl text-white appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 cursor-pointer"
+                      className="w-full pl-12 pr-4 py-4 bg-background border border-border rounded-xl text-foreground appearance-none focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all duration-200 cursor-pointer"
                       required
                     >
                       <option value="">Select a cost code...</option>
@@ -288,8 +287,8 @@ const ChangeOrderModal: React.FC<ChangeOrderModalProps> = ({
                     </select>
                   </div>
                   {selectedCostCode && (
-                    <div className="mt-2 text-xs text-slate-400">
-                      Selected: <span className="text-blue-400 font-mono">{selectedCostCode.code}</span> - {selectedCostCode.description}
+                    <div className="mt-2 text-xs text-muted-foreground">
+                      Selected: <span className="text-blue-600 font-mono">{selectedCostCode.code}</span> - {selectedCostCode.description}
                     </div>
                   )}
                 </div>
@@ -299,18 +298,18 @@ const ChangeOrderModal: React.FC<ChangeOrderModalProps> = ({
                     placeholder="Search cost codes..."
                     value={costCodeSearch}
                     onChange={(e) => setCostCodeSearch(e.target.value)}
-                    className="w-full px-4 py-2 bg-slate-800/30 border border-slate-700/50 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+                    className="w-full px-4 py-2 bg-background border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring/50"
                   />
                 </div>
               </div>
 
               {/* Amount */}
               <div>
-                <label className="block text-sm font-semibold text-slate-300 mb-3">
+                <label className="block text-sm font-semibold text-foreground mb-3">
                   Amount *
                 </label>
                 <div className="relative">
-                  <span className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400 text-lg font-medium">
+                  <span className="absolute left-4 top-1/2 transform -translate-y-1/2 text-muted-foreground text-lg font-medium">
                     $
                   </span>
                   <input
@@ -318,12 +317,12 @@ const ChangeOrderModal: React.FC<ChangeOrderModalProps> = ({
                     step="0.01"
                     value={formData.amount}
                     onChange={(e) => handleInputChange('amount', parseFloat(e.target.value) || 0)}
-                    className="w-full pl-8 pr-4 py-4 bg-slate-800/50 border border-slate-600/50 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                    className="w-full pl-8 pr-4 py-4 bg-background border border-border rounded-xl text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all duration-200"
                     placeholder="0.00"
                     required
                   />
                 </div>
-                <p className="text-xs text-slate-400 mt-2">
+                <p className="text-xs text-muted-foreground mt-2">
                   Enter a positive number for additional costs or a negative number for cost reductions.
                 </p>
               </div>
@@ -331,20 +330,20 @@ const ChangeOrderModal: React.FC<ChangeOrderModalProps> = ({
               {/* Status Display for Edit Mode */}
               {changeOrderToEdit && (
                 <div>
-                  <label className="block text-sm font-semibold text-slate-300 mb-3">
+                  <label className="block text-sm font-semibold text-foreground mb-3">
                     Current Status
                   </label>
-                  <div className="px-4 py-3 bg-slate-800/30 border border-slate-600/30 rounded-xl">
+                  <div className="px-4 py-3 bg-muted border border-border rounded-xl">
                     <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
                       changeOrderToEdit.status === 'Approved' 
-                        ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                        ? 'bg-green-100 text-green-700 border border-green-200'
                         : changeOrderToEdit.status === 'Rejected'
-                        ? 'bg-red-500/20 text-red-400 border border-red-500/30'
-                        : 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
+                        ? 'bg-red-100 text-red-700 border border-red-200'
+                        : 'bg-yellow-100 text-yellow-700 border border-yellow-200'
                     }`}>
                       {changeOrderToEdit.status}
                     </span>
-                    <p className="text-xs text-slate-400 mt-2">
+                    <p className="text-xs text-muted-foreground mt-2">
                       Status can be changed using the action buttons on the main page.
                     </p>
                   </div>
@@ -352,7 +351,7 @@ const ChangeOrderModal: React.FC<ChangeOrderModalProps> = ({
               )}
 
               {/* Action Buttons */}
-              <div className="flex gap-4 pt-6 border-t border-slate-700/50">
+              <div className="flex gap-4 pt-6 border-t border-border">
                 <Button
                   type="button"
                   variant="secondary"
@@ -373,7 +372,7 @@ const ChangeOrderModal: React.FC<ChangeOrderModalProps> = ({
                 </Button>
               </div>
             </form>
-          </Card>
+          </div>
         </div>
       </div>
     </div>

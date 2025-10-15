@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuote, useLineItems, useProjects, LineItem } from '../utils/queries';
 import { useQuotes as useQuoteMutations } from '../contexts/QuoteContext';
 import { useApp } from '../contexts/AppContext';
-import Card from './Card';
+
 import Button from './Button';
 import LineItemModal from './LineItemModal';
 import ChangeOrderModal from './ChangeOrderModal';
@@ -204,51 +204,20 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
 
 
 
-  const getVarianceColor = (variance: number) => {
-    if (variance > 0) return 'text-red-400';
-    if (variance < 0) return 'text-green-400';
-    return 'text-slate-300';
-  };
-
-  const getProfitMarginColor = (margin: number) => {
-    return margin >= 0 ? 'text-green-400' : 'text-red-400';
-  };
-
   const capitalizeStatus = (status: string) => {
     return status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status.toLowerCase()) {
-      case 'draft':
-        return 'text-gray-400';
-      case 'pending':
-      case 'client to be review':
-        return 'text-yellow-400';
-      case 'approved':
-        return 'text-green-400';
-      case 'in progress':
-      case 'working on it':
-        return 'text-blue-400';
-      case 'completed':
-        return 'text-purple-400';
-      case 'rejected':
-        return 'text-red-400';
-      default:
-        return 'text-slate-400';
-    }
   };
 
   const getChangeOrderStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
       case 'pending':
-        return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
+        return 'bg-warning/10 text-warning border-warning/20';
       case 'approved':
-        return 'bg-green-500/20 text-green-400 border-green-500/30';
+        return 'bg-success/10 text-success border-success/20';
       case 'rejected':
-        return 'bg-red-500/20 text-red-400 border-red-500/30';
+        return 'bg-destructive/10 text-destructive border-destructive/20';
       default:
-        return 'bg-slate-500/20 text-slate-400 border-slate-500/30';
+        return 'bg-muted text-muted-foreground border-border';
     }
   };
 
@@ -578,8 +547,8 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
     const currentStepIndex = getCurrentStepIndex();
 
     return (
-      <Card variant="glass" className="p-6">
-        <h3 className="text-lg font-semibold text-white mb-6">Project Status</h3>
+      <div className="bg-card border border-border rounded-lg p-6">
+        <h3 className="text-lg font-semibold text-foreground mb-6">Project Status</h3>
         <div className="flex items-center justify-between">
           {steps.map((step, index) => {
             const Icon = step.icon;
@@ -594,14 +563,14 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
                     flex items-center justify-center w-12 h-12 rounded-full border-2 transition-all duration-300 transform hover:scale-105 relative
                     ${canModifyQuotes() && canTransitionTo(step.key, currentStatus) ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}
                     ${isCompleted 
-                      ? 'bg-green-500/20 border-green-400 text-green-400 hover:bg-green-500/30' 
+                      ? 'bg-success/20 border-success text-success hover:bg-success/30' 
                       : isActive 
-                        ? 'bg-blue-500/20 border-blue-400 text-blue-400 hover:bg-blue-500/30' 
+                        ? 'bg-primary/20 border-primary text-primary hover:bg-primary/30' 
                         : canTransitionTo(step.key, currentStatus)
-                          ? 'bg-slate-800/50 border-slate-600 text-slate-400 hover:bg-slate-700/50 hover:border-slate-500'
-                          : 'bg-slate-900/50 border-slate-700 text-slate-500'
+                          ? 'bg-muted border-border text-muted-foreground hover:bg-muted/80 hover:border-muted-foreground'
+                          : 'bg-muted/50 border-border/50 text-muted-foreground/50'
                     }
-                    ${(step as any).requiresAdmin && !canApproveQuotes() ? 'ring-2 ring-orange-500/50' : ''}
+                    ${(step as any).requiresAdmin && !canApproveQuotes() ? 'ring-2 ring-warning/50' : ''}
                   `}
                   title={
                     !canModifyQuotes() ? 'Read-only access' :
@@ -620,9 +589,9 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
                 
                 <div className="ml-3 flex-1">
                   <p className={`text-sm font-medium ${
-                    isCompleted ? 'text-green-400' : 
-                    isActive ? 'text-blue-400' : 
-                    'text-slate-500'
+                    isCompleted ? 'text-success' : 
+                    isActive ? 'text-primary' : 
+                    'text-muted-foreground'
                   }`}>
                     {step.label}
                   </p>
@@ -630,7 +599,7 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
                 
                 {index < steps.length - 1 && (
                   <div className={`w-16 h-0.5 mx-4 transition-colors duration-300 ${
-                    isCompleted ? 'bg-green-400' : 'bg-slate-700'
+                    isCompleted ? 'bg-success' : 'bg-border'
                   }`} />
                 )}
               </div>
@@ -640,9 +609,9 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
         
         {/* Approval Actions */}
         {currentStatus.toLowerCase() === 'sent' && canApproveQuotes() && (
-          <div className="mt-6 p-4 bg-blue-500/10 border border-blue-500/30 rounded-xl">
+          <div className="mt-6 p-4 bg-primary/10 border border-primary/20 rounded-lg">
             <div className="flex items-center justify-between mb-3">
-              <p className="text-blue-400 text-sm font-medium">
+              <p className="text-primary text-sm font-medium">
                 Quote ready for approval • ${quote?.quoteTotal.toLocaleString()}
               </p>
             </div>
@@ -651,7 +620,7 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
                 onClick={() => handleStatusUpdate('approved')}
                 variant="primary"
                 size="sm"
-                className="bg-green-600 hover:bg-green-700"
+                className="bg-success hover:bg-success/90"
               >
                 <CheckCircle className="w-4 h-4" />
                 Approve Quote
@@ -660,7 +629,7 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
                 onClick={() => handleStatusUpdate('rejected')}
                 variant="outline"
                 size="sm"
-                className="border-red-500/50 text-red-400 hover:bg-red-500/10"
+                className="border-destructive/50 text-destructive hover:bg-destructive/10"
               >
                 Reject Quote
               </Button>
@@ -669,33 +638,33 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
         )}
 
         {currentStatus.toLowerCase() === 'rejected' && (
-          <div className="mt-6 p-4 bg-red-500/10 border border-red-500/30 rounded-xl">
-            <p className="text-red-400 text-sm font-medium">
+          <div className="mt-6 p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
+            <p className="text-destructive text-sm font-medium">
               This quote has been rejected. Please review and make necessary changes.
             </p>
           </div>
         )}
         
-        <div className="mt-4 text-xs text-slate-400">
+        <div className="mt-4 text-xs text-muted-foreground">
           {canApproveQuotes() ? (
             'Click on any step to update the status • Admin privileges enabled'
           ) : (
             'Limited status changes available • Contact admin for approvals'
           )}
         </div>
-      </Card>
+      </div>
     );
   };
 
   if (loading) {
     return (
       <div className="space-y-6">
-        <Card variant="glass" className="text-center py-12">
+        <div className="bg-card border border-border rounded-lg text-center py-12">
           <div className="flex items-center justify-center gap-3">
-            <div className="w-6 h-6 border-2 border-blue-400/30 border-t-blue-400 rounded-full animate-spin"></div>
-            <span className="text-slate-300">Loading quote details...</span>
+            <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin"></div>
+            <span className="text-muted-foreground">Loading quote details...</span>
           </div>
-        </Card>
+        </div>
       </div>
     );
   }
@@ -713,16 +682,16 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
             Back to Quotes
           </Button>
         </div>
-        <Card variant="glass" className="border-red-500/50 bg-red-500/10 text-center py-12">
+        <div className="bg-card border border-destructive/50 rounded-lg text-center py-12">
           <div className="flex items-center justify-center gap-3 mb-4">
-            <div className="w-6 h-6 text-red-400">
+            <div className="w-6 h-6 text-destructive">
               <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
-            <p className="text-red-300">{error?.message || 'Quote not found'}</p>
+            <p className="text-destructive">{error?.message || 'Quote not found'}</p>
           </div>
-        </Card>
+        </div>
       </div>
     );
   }
@@ -731,47 +700,55 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
     <div className="space-y-6">
 
 
-      {/* Minimalist Quote Header */}
-      <div className="flex items-center justify-between mb-8">
-        <div className="flex flex-col gap-3">
-          <button
-            onClick={() => navigate('/quotes')}
-            className="flex items-center gap-2 text-slate-400 hover:text-slate-200 transition-colors duration-200 self-start"
+      {/* Command Center Header */}
+      <div className="bg-card border border-border rounded-lg p-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => navigate('/quotes')}
+              className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span className="text-sm font-medium">Back to Quotes</span>
+            </button>
+            <div className="h-6 w-px bg-border" />
+            <div>
+              <h1 className="text-2xl font-semibold text-foreground">
+                {quote.quoteName}
+              </h1>
+              <p className="text-sm text-muted-foreground mt-1">
+                Quote Details & Cost Tracking
+              </p>
+            </div>
+          </div>
+          <Button
+            onClick={handleDownloadPDF}
+            variant="outline"
+            className="flex items-center gap-2"
           >
-            <ArrowLeft className="w-4 h-4" />
-            <span className="text-sm font-medium">Back to Quotes</span>
-          </button>
-          <h1 className="text-3xl font-semibold text-slate-900 dark:text-white">
-            {quote.quoteName}
-          </h1>
+            <Download className="w-4 h-4" />
+            Download PDF
+          </Button>
         </div>
-        <Button
-          onClick={handleDownloadPDF}
-          variant="secondary"
-          className="flex items-center gap-2"
-        >
-          <Download className="w-4 h-4" />
-          Download PDF
-        </Button>
       </div>
 
       {/* Project Assignment Section */}
-      <Card variant="glass" className="p-6">
+      <div className="bg-card border border-border rounded-lg p-6">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-lg font-semibold text-white mb-2">Project Assignment</h3>
-            <p className="text-slate-400 text-sm">Link this quote to a project for better tracking</p>
+            <h3 className="text-lg font-semibold text-foreground mb-2">Project Assignment</h3>
+            <p className="text-muted-foreground text-sm">Link this quote to a project for better tracking</p>
           </div>
           {!editingProject ? (
             <div className="flex items-center gap-3">
-              <span className="text-slate-300">
+              <span className="text-foreground">
                 {selectedProjectId 
                   ? projects.find(p => p.id === selectedProjectId)?.name || 'Unknown Project'
                   : 'No Project Assigned'
                 }
               </span>
               <Button
-                variant="secondary"
+                variant="outline"
                 size="sm"
                 onClick={() => setEditingProject(true)}
                 className="text-sm"
@@ -784,7 +761,7 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
               <select
                 value={selectedProjectId || ''}
                 onChange={(e) => setSelectedProjectId(e.target.value ? parseInt(e.target.value) : null)}
-                className="px-3 py-2 bg-slate-800/50 border border-slate-600/50 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
               >
                 <option value="">No Project</option>
                 {projects.map((project) => (
@@ -815,95 +792,97 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
             </div>
           )}
         </div>
-      </Card>
+      </div>
 
-      {/* Dynamic KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {/* Actual Cost Card - Sum of actual costs from line items */}
-        <Card variant="glass" padding="md" className="text-center">
-          <div className="flex items-center justify-center w-12 h-12 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-lg mx-auto mb-4">
-            <BarChart3 className="w-6 h-6 text-white" />
-          </div>
-          <h3 className="text-2xl font-bold text-white mb-1">
-            {formatCurrency(calculateActualCost())}
-          </h3>
-          <p className="uppercase tracking-wider text-xs text-slate-400">Actual Cost</p>
-        </Card>
-
-        {/* Editable Quote Total Card with Auto-Save */}
-        <Card variant="glass" padding="md" className="text-center">
-          <div className="flex items-center justify-center w-12 h-12 bg-gradient-to-r from-green-500 to-teal-500 rounded-lg mx-auto mb-4">
-            <DollarSign className="w-6 h-6 text-white" />
-          </div>
-          {editingQuoteTotal ? (
-            <div className="space-y-2">
-              <input
-                type="number"
-                value={tempQuoteTotal}
-                onChange={(e) => setTempQuoteTotal(e.target.value)}
-                onBlur={handleQuoteTotalBlur}
-                onKeyDown={handleQuoteTotalKeyPress}
-                className="text-2xl font-bold bg-transparent border-b-2 border-green-400 text-white text-center w-full focus:outline-none focus:border-green-300 transition-colors"
-                autoFocus
-                placeholder="Enter amount"
-              />
-              <p className="text-xs text-slate-400">
-                Press Enter to save • Esc to cancel
-              </p>
+      {/* Unified KPI Row */}
+      <div className="bg-card border border-border rounded-lg p-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          {/* Actual Cost KPI */}
+          <div className="text-center">
+            <div className="flex items-center justify-center w-12 h-12 bg-primary/10 rounded-lg mx-auto mb-3">
+              <BarChart3 className="w-6 h-6 text-primary" />
             </div>
-          ) : (
-            <div
-              onClick={canModifyQuotes() ? handleQuoteTotalEdit : undefined}
-              className={`${canModifyQuotes() ? 'cursor-pointer group hover:bg-white/5' : ''} rounded-lg p-2 transition-all duration-200`}
-            >
-              <h3 className="text-2xl font-bold text-white mb-1 flex items-center justify-center gap-2 group-hover:text-green-300 transition-colors">
-                {formatCurrency(quote.quoteTotal)}
-                {canModifyQuotes() && (
-                  <Edit2 className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity text-green-400" />
-                )}
-              </h3>
-              <p className="uppercase tracking-wider text-xs text-slate-400">Quote Total</p>
+            <p className="text-2xl font-bold text-foreground mb-1">
+              {formatCurrency(calculateActualCost())}
+            </p>
+            <p className="text-sm text-muted-foreground">Actual Cost</p>
+          </div>
+
+          {/* Editable Quote Total KPI */}
+          <div className="text-center">
+            <div className="flex items-center justify-center w-12 h-12 bg-success/10 rounded-lg mx-auto mb-3">
+              <DollarSign className="w-6 h-6 text-success" />
             </div>
-          )}
-        </Card>
-
-        {/* Dynamic Profit Margin Card */}
-        <Card variant="glass" padding="md" className="text-center">
-          <div className="flex items-center justify-center w-12 h-12 bg-gradient-to-r from-orange-500 to-red-500 rounded-lg mx-auto mb-4">
-            <TrendingUp className="w-6 h-6 text-white" />
+            {editingQuoteTotal ? (
+              <div className="space-y-2">
+                <input
+                  type="number"
+                  value={tempQuoteTotal}
+                  onChange={(e) => setTempQuoteTotal(e.target.value)}
+                  onBlur={handleQuoteTotalBlur}
+                  onKeyDown={handleQuoteTotalKeyPress}
+                  className="text-2xl font-bold bg-background border border-border rounded px-2 py-1 text-foreground text-center w-full focus:outline-none focus:ring-2 focus:ring-ring transition-colors"
+                  autoFocus
+                  placeholder="Enter amount"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Press Enter to save • Esc to cancel
+                </p>
+              </div>
+            ) : (
+              <div
+                onClick={canModifyQuotes() ? handleQuoteTotalEdit : undefined}
+                className={`${canModifyQuotes() ? 'cursor-pointer group hover:bg-muted/50' : ''} rounded-lg p-2 transition-all duration-200`}
+              >
+                <p className="text-2xl font-bold text-foreground mb-1 flex items-center justify-center gap-2 group-hover:text-success transition-colors">
+                  {formatCurrency(quote.quoteTotal)}
+                  {canModifyQuotes() && (
+                    <Edit2 className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity text-success" />
+                  )}
+                </p>
+                <p className="text-sm text-muted-foreground">Quote Total</p>
+              </div>
+            )}
           </div>
-          <h3 className={`text-2xl font-bold mb-1 ${getProfitMarginColor(calculateProfitMargin())}`}>
-            {formatPercentage(calculateProfitMargin())}
-          </h3>
-          <p className="uppercase tracking-wider text-xs text-slate-400">Profit Margin</p>
-        </Card>
 
-        {/* Status Card */}
-        <Card variant="glass" padding="md" className="text-center">
-          <div className="flex items-center justify-center w-12 h-12 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg mx-auto mb-4">
-            <Calendar className="w-6 h-6 text-white" />
+          {/* Profit Margin KPI */}
+          <div className="text-center">
+            <div className="flex items-center justify-center w-12 h-12 bg-warning/10 rounded-lg mx-auto mb-3">
+              <TrendingUp className="w-6 h-6 text-warning" />
+            </div>
+            <p className={`text-2xl font-bold mb-1 ${calculateProfitMargin() >= 0 ? 'text-success' : 'text-destructive'}`}>
+              {formatPercentage(calculateProfitMargin())}
+            </p>
+            <p className="text-sm text-muted-foreground">Profit Margin</p>
           </div>
-          <h3 className={`text-2xl font-bold mb-1 ${getStatusColor(quote.status)}`}>
-            {capitalizeStatus(quote.status)}
-          </h3>
-          <p className="uppercase tracking-wider text-xs text-slate-400">Current Status</p>
-        </Card>
+
+          {/* Status KPI */}
+          <div className="text-center">
+            <div className="flex items-center justify-center w-12 h-12 bg-primary/10 rounded-lg mx-auto mb-3">
+              <Calendar className="w-6 h-6 text-primary" />
+            </div>
+            <p className="text-2xl font-bold mb-1 text-foreground">
+              {capitalizeStatus(quote.status)}
+            </p>
+            <p className="text-sm text-muted-foreground">Current Status</p>
+          </div>
+        </div>
       </div>
 
       {/* Status Stepper */}
       <InteractiveStatusStepper currentStatus={quote.status} />
 
       {/* Line Items Table */}
-      <Card variant="glass">
-        <div className="p-6 border-b border-slate-700/50 flex items-center justify-between">
+      <div className="bg-card border border-border rounded-lg">
+        <div className="p-6 border-b border-border flex items-center justify-between">
           <div>
-            <h3 className="text-xl font-semibold text-white">Cost Breakdown</h3>
-            <p className="text-slate-400 mt-1">Detailed line items with estimated vs actual costs</p>
+            <h3 className="text-xl font-semibold text-foreground">Cost Breakdown</h3>
+            <p className="text-muted-foreground mt-1">Detailed line items with estimated vs actual costs</p>
           </div>
           {canModifyQuotes() && (
             <Button
               onClick={handleAddLineItem}
-              className="bg-blue-600 hover:bg-blue-700 text-white flex-shrink-0"
+              className="bg-primary hover:bg-primary/90 text-primary-foreground flex-shrink-0"
             >
               <Plus className="w-4 h-4 mr-2" />
               Add Line Item
@@ -914,17 +893,17 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="border-b border-slate-700/50">
-                <th className="text-left py-4 px-6 text-sm font-semibold text-slate-300 uppercase tracking-wider">
+              <tr className="border-b border-border bg-muted/30">
+                <th className="text-left py-4 px-6 text-sm font-semibold text-muted-foreground uppercase tracking-wider">
                   Line Item
                 </th>
-                <th className="text-right py-4 px-6 text-sm font-semibold text-slate-300 uppercase tracking-wider">
+                <th className="text-right py-4 px-6 text-sm font-semibold text-muted-foreground uppercase tracking-wider">
                   Estimated Cost
                 </th>
-                <th className="text-right py-4 px-6 text-sm font-semibold text-slate-300 uppercase tracking-wider">
+                <th className="text-right py-4 px-6 text-sm font-semibold text-muted-foreground uppercase tracking-wider">
                   Actual Cost
                 </th>
-                <th className="text-right py-4 px-6 text-sm font-semibold text-slate-300 uppercase tracking-wider">
+                <th className="text-right py-4 px-6 text-sm font-semibold text-muted-foreground uppercase tracking-wider">
                   Variance
                 </th>
               </tr>
@@ -933,20 +912,20 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
               {lineItemsLoading ? (
                 <tr>
                   <td colSpan={4} className="py-8 text-center">
-                    <div className="animate-spin w-6 h-6 border-2 border-white/30 border-t-white rounded-full mx-auto mb-4"></div>
-                    <p className="text-slate-300">Loading line items...</p>
+                    <div className="animate-spin w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full mx-auto mb-4"></div>
+                    <p className="text-muted-foreground">Loading line items...</p>
                   </td>
                 </tr>
               ) : lineItems.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="py-12 text-center">
-                    <div className="text-slate-400">
+                    <div className="text-muted-foreground">
                       <div className="mb-4">
-                        <svg className="mx-auto h-12 w-12 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <svg className="mx-auto h-12 w-12 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                         </svg>
                       </div>
-                      <h3 className="text-lg font-medium text-white mb-2">No line items yet</h3>
+                      <h3 className="text-lg font-medium text-foreground mb-2">No line items yet</h3>
                       <p className="mb-4">Add your first line item to start tracking costs and progress.</p>
                       <Button
                         onClick={handleAddLineItem}
@@ -965,28 +944,28 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
                     <tr
                       key={item.id}
                       className={`
-                        group border-b border-slate-700/30 hover:bg-white/5 transition-colors duration-200
+                        group border-b border-border hover:bg-muted/50 transition-colors duration-200
                         ${index === lineItems.length - 1 ? 'border-b-0' : ''}
                       `}
                     >
                       <td className="py-4 px-6">
                         <div className="flex items-center justify-between">
                           <div>
-                            <h4 className="text-white font-medium">{item.description}</h4>
-                            <p className="text-sm text-slate-400 mt-1">General</p>
+                            <h4 className="text-foreground font-medium">{item.description}</h4>
+                            <p className="text-sm text-muted-foreground mt-1">General</p>
                           </div>
                           {canModifyQuotes() && (
                             <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center space-x-2">
                               <button
                                 onClick={() => handleEditLineItem(item)}
-                                className="p-2 text-slate-400 hover:text-blue-400 transition-colors duration-200 rounded-lg hover:bg-white/5"
+                                className="p-2 text-muted-foreground hover:text-primary transition-colors duration-200 rounded-lg hover:bg-muted"
                                 title="Edit line item"
                               >
                                 <Edit2 className="w-4 h-4" />
                               </button>
                               <button
                                 onClick={() => handleDeleteLineItem(item)}
-                                className="p-2 text-slate-400 hover:text-red-400 transition-colors duration-200 rounded-lg hover:bg-white/5"
+                                className="p-2 text-muted-foreground hover:text-destructive transition-colors duration-200 rounded-lg hover:bg-muted"
                                 title="Delete line item"
                               >
                                 <Trash2 className="w-4 h-4" />
@@ -996,17 +975,17 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
                         </div>
                       </td>
                       <td className="py-4 px-6 text-right">
-                        <span className="text-slate-300 font-medium">
+                        <span className="text-muted-foreground font-medium">
                           {formatCurrency(item.estimatedCost)}
                         </span>
                       </td>
                       <td className="py-4 px-6 text-right">
-                        <span className="text-white font-semibold">
+                        <span className="text-foreground font-semibold">
                           {formatCurrency(item.actualCost || 0)}
                         </span>
                       </td>
                       <td className="py-4 px-6 text-right">
-                        <span className={`font-semibold ${getVarianceColor(variance)}`}>
+                        <span className={`font-semibold ${variance > 0 ? 'text-destructive' : variance < 0 ? 'text-success' : 'text-muted-foreground'}`}>
                           {formatPercentage(variance)}
                         </span>
                       </td>
@@ -1016,22 +995,22 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
               )}
             </tbody>
             <tfoot>
-              <tr className="border-t-2 border-slate-600/50 bg-slate-800/30">
+              <tr className="border-t-2 border-border bg-muted/30">
                 <td className="py-4 px-6">
-                  <span className="text-white font-bold">Total</span>
+                  <span className="text-foreground font-bold">Total</span>
                 </td>
                 <td className="py-4 px-6 text-right">
-                  <span className="text-slate-300 font-bold">
+                  <span className="text-muted-foreground font-bold">
                     {formatCurrency(lineItems.reduce((sum, item) => sum + item.estimatedCost, 0))}
                   </span>
                 </td>
                 <td className="py-4 px-6 text-right">
-                  <span className="text-white font-bold">
+                  <span className="text-foreground font-bold">
                     {formatCurrency(lineItems.reduce((sum, item) => sum + (item.actualCost || 0), 0))}
                   </span>
                 </td>
                 <td className="py-4 px-6 text-right">
-                  <span className="text-blue-400 font-bold">
+                  <span className="text-primary font-bold">
                     {lineItems.length > 0 ? formatPercentage(
                       ((lineItems.reduce((sum, item) => sum + (item.actualCost || 0), 0) - 
                         lineItems.reduce((sum, item) => sum + item.estimatedCost, 0)) / 
@@ -1043,16 +1022,16 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
             </tfoot>
           </table>
         </div>
-      </Card>
+      </div>
 
 
 
       {/* Change Orders Section */}
-      <Card variant="glass" padding="lg">
+      <div className="bg-card border border-border rounded-lg p-6">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h2 className="text-2xl font-bold text-white mb-2">Change Orders</h2>
-            <p className="text-slate-400">
+            <h2 className="text-2xl font-bold text-foreground mb-2">Change Orders</h2>
+            <p className="text-muted-foreground">
               Track and manage changes to the original scope of work
             </p>
           </div>
@@ -1070,16 +1049,16 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
 
         {changeOrdersLoading ? (
           <div className="flex items-center justify-center py-12">
-            <div className="w-8 h-8 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin"></div>
-            <span className="ml-3 text-slate-400">Loading change orders...</span>
+            <div className="w-8 h-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin"></div>
+            <span className="ml-3 text-muted-foreground">Loading change orders...</span>
           </div>
         ) : changeOrders.length === 0 ? (
           <div className="text-center py-12">
-            <div className="w-16 h-16 bg-slate-700/50 rounded-full flex items-center justify-center mx-auto mb-4">
-              <FileText className="w-8 h-8 text-slate-400" />
+            <div className="w-16 h-16 bg-muted/50 rounded-full flex items-center justify-center mx-auto mb-4">
+              <FileText className="w-8 h-8 text-muted-foreground" />
             </div>
-            <h3 className="text-lg font-semibold text-slate-300 mb-2">No Change Orders</h3>
-            <p className="text-slate-400 mb-6">
+            <h3 className="text-lg font-semibold text-foreground mb-2">No Change Orders</h3>
+            <p className="text-muted-foreground mb-6">
               No change orders have been created for this quote yet.
             </p>
             {canModifyQuotes() && (
@@ -1098,12 +1077,12 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
             {changeOrders.map((changeOrder) => (
               <div
                 key={changeOrder.id}
-                className="bg-slate-800/30 border border-slate-600/30 rounded-xl p-6 hover:bg-slate-800/40 transition-colors"
+                className="bg-background border border-border rounded-lg p-6 hover:bg-muted/30 transition-colors"
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
-                      <h3 className="text-lg font-semibold text-white">
+                      <h3 className="text-lg font-semibold text-foreground">
                         {changeOrder.description}
                       </h3>
                       <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium border ${getChangeOrderStatusColor(changeOrder.status)}`}>
@@ -1111,11 +1090,11 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
                       </span>
                     </div>
                     
-                    <div className="flex items-center gap-6 text-sm text-slate-400">
+                    <div className="flex items-center gap-6 text-sm text-muted-foreground">
                       <div className="flex items-center gap-2">
                         <DollarSign className="w-4 h-4" />
                         <span className={`font-medium ${
-                          changeOrder.amount >= 0 ? 'text-green-400' : 'text-red-400'
+                          changeOrder.amount >= 0 ? 'text-success' : 'text-destructive'
                         }`}>
                           {changeOrder.amount >= 0 ? '+' : ''}
                           {formatCurrency(changeOrder.amount)}
@@ -1139,7 +1118,7 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
                             variant="outline"
                             size="sm"
                             onClick={() => handleChangeOrderStatusUpdate(changeOrder, 'Approved')}
-                            className="flex items-center gap-1 text-green-400 border-green-500/30 hover:bg-green-500/10"
+                            className="flex items-center gap-1 text-success border-success/30 hover:bg-success/10"
                           >
                             <Check className="w-3 h-3" />
                             Approve
@@ -1148,7 +1127,7 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
                             variant="outline"
                             size="sm"
                             onClick={() => handleChangeOrderStatusUpdate(changeOrder, 'Rejected')}
-                            className="flex items-center gap-1 text-red-400 border-red-500/30 hover:bg-red-500/10"
+                            className="flex items-center gap-1 text-destructive border-destructive/30 hover:bg-destructive/10"
                           >
                             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -1163,7 +1142,7 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
                           variant="outline"
                           size="sm"
                           onClick={() => handleChangeOrderStatusUpdate(changeOrder, 'Pending')}
-                          className="flex items-center gap-1 text-yellow-400 border-yellow-500/30 hover:bg-yellow-500/10"
+                          className="flex items-center gap-1 text-warning border-warning/30 hover:bg-warning/10"
                         >
                           <Clock className="w-3 h-3" />
                           Revert to Pending
@@ -1175,7 +1154,7 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
                           variant="outline"
                           size="sm"
                           onClick={() => handleChangeOrderStatusUpdate(changeOrder, 'Pending')}
-                          className="flex items-center gap-1 text-yellow-400 border-yellow-500/30 hover:bg-yellow-500/10"
+                          className="flex items-center gap-1 text-warning border-warning/30 hover:bg-warning/10"
                         >
                           <Clock className="w-3 h-3" />
                           Revert to Pending
@@ -1187,7 +1166,7 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
                         variant="ghost"
                         size="sm"
                         onClick={() => handleEditChangeOrder(changeOrder)}
-                        className="flex items-center gap-1 text-slate-400 hover:text-white"
+                        className="flex items-center gap-1 text-muted-foreground hover:text-foreground"
                       >
                         <Edit2 className="w-3 h-3" />
                         Edit
@@ -1196,7 +1175,7 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
                         variant="ghost"
                         size="sm"
                         onClick={() => handleDeleteChangeOrder(changeOrder)}
-                        className="flex items-center gap-1 text-red-400 hover:text-red-300"
+                        className="flex items-center gap-1 text-destructive hover:text-destructive/80"
                       >
                         <Trash2 className="w-3 h-3" />
                         Delete
@@ -1208,17 +1187,17 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
             ))}
 
             {/* Change Orders Summary */}
-            <div className="border-t border-slate-600/50 pt-4 mt-6">
+            <div className="border-t border-border pt-4 mt-6">
               <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-400">
+                <span className="text-muted-foreground">
                   Total Change Orders Impact:
                 </span>
                 <span className={`font-semibold ${
                   changeOrders
                     .filter(co => co.status === 'Approved')
                     .reduce((sum, co) => sum + co.amount, 0) >= 0 
-                    ? 'text-green-400' 
-                    : 'text-red-400'
+                    ? 'text-success' 
+                    : 'text-destructive'
                 }`}>
                   {changeOrders
                     .filter(co => co.status === 'Approved')
@@ -1230,13 +1209,13 @@ const ViewQuotePage = ({ currentUser }: ViewQuotePageProps) => {
                   )}
                 </span>
               </div>
-              <div className="text-xs text-slate-500 mt-1">
+              <div className="text-xs text-muted-foreground mt-1">
                 Only approved change orders affect the actual costs
               </div>
             </div>
           </div>
         )}
-      </Card>
+      </div>
 
       {/* AI Insights Section */}
       <AiInsights quote={quote} lineItems={lineItems} />

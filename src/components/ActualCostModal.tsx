@@ -94,16 +94,25 @@ const ActualCostModal: React.FC<ActualCostModalProps> = ({
       return;
     }
 
+    // Create validated data object with guaranteed cost_code_id
+    const validatedData = {
+      cost_code_id: formData.cost_code_id, // Guaranteed to be number due to validation above
+      amount: formData.amount,
+      date: formData.date,
+      description: formData.description,
+      vendor_id: formData.vendor_id
+    };
+
     try {
       if (actualCostToEdit) {
         // Edit mode
-        await updateActualCost(projectId, actualCostToEdit.id, formData);
+        await updateActualCost(projectId, actualCostToEdit.id, validatedData);
         if (onSuccess) {
           onSuccess('Actual cost updated successfully!');
         }
       } else {
         // Create mode
-        await addActualCost(projectId, formData);
+        await addActualCost(projectId, validatedData);
         if (onSuccess) {
           onSuccess('Actual cost logged successfully!');
         }
@@ -173,14 +182,14 @@ const ActualCostModal: React.FC<ActualCostModalProps> = ({
     >
       <div className="min-h-screen flex items-center justify-center p-4 py-8">
         <div className="w-full max-w-2xl my-8">
-          <Card variant="glass" className="relative animate-fade-in">
+          <Card variant="default" className="relative animate-fade-in">
             {/* Modal Header */}
             <div className="flex items-center justify-between mb-8">
               <div>
-                <h2 className="text-2xl font-bold text-white mb-2">
+                <h2 className="text-2xl font-bold text-foreground mb-2">
                   {actualCostToEdit ? 'Edit Actual Cost' : 'Log New Expense'}
                 </h2>
-                <p className="text-slate-400">
+                <p className="text-muted-foreground">
                   {actualCostToEdit 
                     ? 'Update the details below to modify this expense entry.'
                     : 'Record an actual expense for this project to track budget vs. actuals.'
@@ -189,7 +198,7 @@ const ActualCostModal: React.FC<ActualCostModalProps> = ({
               </div>
               <button
                 onClick={onClose}
-                className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -201,17 +210,17 @@ const ActualCostModal: React.FC<ActualCostModalProps> = ({
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Cost Code Selection */}
               <div>
-                <label className="block text-sm font-semibold text-slate-300 mb-3">
+                <label className="block text-sm font-semibold text-foreground mb-3">
                   Cost Code *
                 </label>
                 <div className="relative">
                   <div className="relative">
-                    <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5 pointer-events-none z-10" />
+                    <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-muted-foreground w-5 h-5 pointer-events-none z-10" />
                     <select
                       value={formData.cost_code_id || ''}
                       onChange={(e) => handleInputChange('cost_code_id', e.target.value ? parseInt(e.target.value) : undefined)}
                       onFocus={() => setCostCodeSearch('')}
-                      className="w-full pl-12 pr-4 py-4 bg-slate-800/50 border border-slate-600/50 rounded-xl text-white appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 cursor-pointer"
+                      className="w-full pl-12 pr-4 py-4 bg-background border border-border rounded-xl text-foreground appearance-none focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all duration-200 cursor-pointer"
                       required
                     >
                       <option value="">Select a cost code...</option>
@@ -245,8 +254,8 @@ const ActualCostModal: React.FC<ActualCostModalProps> = ({
                     </select>
                   </div>
                   {selectedCostCode && (
-                    <div className="mt-2 text-xs text-slate-400">
-                      Selected: <span className="text-blue-400 font-mono">{selectedCostCode.code}</span> - {selectedCostCode.description}
+                    <div className="mt-2 text-xs text-muted-foreground">
+                      Selected: <span className="text-primary font-mono">{selectedCostCode.code}</span> - {selectedCostCode.description}
                     </div>
                   )}
                 </div>
@@ -256,7 +265,7 @@ const ActualCostModal: React.FC<ActualCostModalProps> = ({
                     placeholder="Search cost codes..."
                     value={costCodeSearch}
                     onChange={(e) => setCostCodeSearch(e.target.value)}
-                    className="w-full px-4 py-2 bg-slate-800/30 border border-slate-700/50 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+                    className="w-full px-4 py-2 bg-background border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
                   />
                 </div>
               </div>
@@ -265,18 +274,18 @@ const ActualCostModal: React.FC<ActualCostModalProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Amount */}
                 <div>
-                  <label className="block text-sm font-semibold text-slate-300 mb-3">
+                  <label className="block text-sm font-semibold text-foreground mb-3">
                     Amount *
                   </label>
                   <div className="relative">
-                    <DollarSign className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5 pointer-events-none" />
+                    <DollarSign className="absolute left-4 top-1/2 transform -translate-y-1/2 text-muted-foreground w-5 h-5 pointer-events-none" />
                     <input
                       type="number"
                       min="0.01"
                       step="0.01"
                       value={formData.amount || ''}
                       onChange={(e) => handleInputChange('amount', e.target.value ? parseFloat(e.target.value) : 0)}
-                      className="w-full pl-12 pr-4 py-4 bg-slate-800/50 border border-slate-600/50 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                      className="w-full pl-12 pr-4 py-4 bg-background border border-border rounded-xl text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all duration-200"
                       placeholder="0.00"
                       required
                     />
@@ -285,16 +294,16 @@ const ActualCostModal: React.FC<ActualCostModalProps> = ({
 
                 {/* Date */}
                 <div>
-                  <label className="block text-sm font-semibold text-slate-300 mb-3">
+                  <label className="block text-sm font-semibold text-foreground mb-3">
                     Date *
                   </label>
                   <div className="relative">
-                    <Calendar className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5 pointer-events-none" />
+                    <Calendar className="absolute left-4 top-1/2 transform -translate-y-1/2 text-muted-foreground w-5 h-5 pointer-events-none" />
                     <input
                       type="date"
                       value={formData.date}
                       onChange={(e) => handleInputChange('date', e.target.value)}
-                      className="w-full pl-12 pr-4 py-4 bg-slate-800/50 border border-slate-600/50 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                      className="w-full pl-12 pr-4 py-4 bg-background border border-border rounded-xl text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all duration-200"
                       required
                     />
                   </div>
@@ -303,13 +312,13 @@ const ActualCostModal: React.FC<ActualCostModalProps> = ({
 
               {/* Vendor */}
               <div>
-                <label className="block text-sm font-semibold text-slate-300 mb-3">
+                <label className="block text-sm font-semibold text-foreground mb-3">
                   Vendor (Optional)
                 </label>
                 <select
                   value={formData.vendor_id || ''}
                   onChange={(e) => handleInputChange('vendor_id', e.target.value ? parseInt(e.target.value) : undefined)}
-                  className="w-full px-4 py-4 bg-slate-800/50 border border-slate-600/50 rounded-xl text-white appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 cursor-pointer"
+                  className="w-full px-4 py-4 bg-background border border-border rounded-xl text-foreground appearance-none focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all duration-200 cursor-pointer"
                 >
                   <option value="">Select a vendor (optional)...</option>
                   {vendors.map(vendor => (
@@ -322,15 +331,15 @@ const ActualCostModal: React.FC<ActualCostModalProps> = ({
 
               {/* Description */}
               <div>
-                <label className="block text-sm font-semibold text-slate-300 mb-3">
+                <label className="block text-sm font-semibold text-foreground mb-3">
                   Description (Optional)
                 </label>
                 <div className="relative">
-                  <FileText className="absolute left-4 top-4 text-slate-400 w-5 h-5 pointer-events-none" />
+                  <FileText className="absolute left-4 top-4 text-muted-foreground w-5 h-5 pointer-events-none" />
                   <textarea
                     value={formData.description}
                     onChange={(e) => handleInputChange('description', e.target.value)}
-                    className="w-full pl-12 pr-4 py-4 bg-slate-800/50 border border-slate-600/50 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 resize-vertical min-h-[100px]"
+                    className="w-full pl-12 pr-4 py-4 bg-background border border-border rounded-xl text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all duration-200 resize-vertical min-h-[100px]"
                     placeholder="e.g., Invoice #12345 for concrete delivery"
                     rows={3}
                   />
@@ -338,7 +347,7 @@ const ActualCostModal: React.FC<ActualCostModalProps> = ({
               </div>
 
               {/* Action Buttons */}
-              <div className="flex gap-4 pt-6 border-t border-slate-700/50">
+              <div className="flex gap-4 pt-6 border-t border-border">
                 <Button
                   type="button"
                   variant="secondary"

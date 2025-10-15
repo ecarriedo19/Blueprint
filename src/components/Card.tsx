@@ -1,40 +1,59 @@
 import React from 'react';
+import { motion, HTMLMotionProps } from 'framer-motion';
 
-interface CardProps {
+interface CardProps extends Omit<HTMLMotionProps<'div'>, 'children'> {
   children: React.ReactNode;
-  className?: string;
-  variant?: 'default' | 'gradient' | 'glass';
-  padding?: 'sm' | 'md' | 'lg';
+  variant?: 'default' | 'gradient' | 'glass' | 'bordered' | 'glow';
+  padding?: 'none' | 'sm' | 'md' | 'lg' | 'xl';
   hover?: boolean;
+  glow?: boolean;
+  clickable?: boolean;
 }
 
 const Card: React.FC<CardProps> = ({ 
   children, 
   className = '', 
-  variant = 'glass',
+  variant = 'default',
   padding = 'lg',
-  hover = true
+  hover = false,
+  glow = false,
+  clickable = false,
+  ...props
 }) => {
-  const baseClasses = 'rounded-2xl border transition-all duration-300';
+  const baseClasses = 'rounded-lg transition-all duration-200';
   
   const variantClasses = {
-    default: 'bg-white/90 dark:bg-slate-700/50 border-gray-200/50 dark:border-slate-600/50 backdrop-blur-sm shadow-xl',
-    gradient: 'bg-gradient-to-br from-white/95 to-gray-50/95 dark:from-slate-800/90 dark:to-slate-900/90 border-gray-200/50 dark:border-slate-700/50 backdrop-blur-sm shadow-2xl',
-    glass: 'bg-white/20 dark:bg-white/5 border-gray-200/30 dark:border-white/10 backdrop-blur-xl shadow-2xl hover:bg-white/30 dark:hover:bg-white/10 hover:border-gray-300/50 dark:hover:border-white/20'
+    default: 'bg-card border border-border',
+    gradient: 'bg-gradient-to-br from-background to-muted/50 border border-border',
+    glass: 'bg-background/95 border border-border/50 backdrop-blur-sm',
+    bordered: 'bg-card border-2 border-primary/20 hover:border-primary/40',
+    glow: 'bg-card border border-primary/30 shadow-lg shadow-primary/10',
   };
 
   const paddingClasses = {
+    none: '',
     sm: 'p-4',
     md: 'p-6', 
-    lg: 'p-8'
+    lg: 'p-6',
+    xl: 'p-8',
   };
 
-  const hoverClasses = hover ? 'hover:scale-[1.02] hover:shadow-3xl' : '';
+  const hoverClasses = hover ? 'hover:shadow-md hover:border-primary/20' : '';
+  const clickableClasses = clickable ? 'cursor-pointer' : '';
+  const glowClasses = glow ? 'hover:shadow-lg hover:shadow-primary/20' : '';
+
+  const motionProps = hover 
+    ? { whileHover: { y: -2 }, transition: { duration: 0.2 } }
+    : {};
 
   return (
-    <div className={`${baseClasses} ${variantClasses[variant]} ${paddingClasses[padding]} ${hoverClasses} ${className}`}>
+    <motion.div
+      {...props}
+      {...motionProps}
+      className={`${baseClasses} ${variantClasses[variant]} ${paddingClasses[padding]} ${hoverClasses} ${clickableClasses} ${glowClasses} ${className}`}
+    >
       {children}
-    </div>
+    </motion.div>
   );
 };
 

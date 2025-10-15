@@ -193,25 +193,25 @@ const CreateChangeOrderModal: React.FC<CreateChangeOrderModalProps> = ({
     >
       <div className="min-h-screen flex items-center justify-center p-4 py-8">
         <div className="w-full max-w-2xl my-8">
-          <Card variant="glass" className="relative animate-fade-in">
+          <Card variant="default" className="relative animate-fade-in">
             {/* Modal Header */}
             <div className="flex items-center justify-between mb-8">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-orange-500/10 dark:bg-orange-400/10 rounded-lg flex items-center justify-center">
-                  <Activity className="w-5 h-5 text-orange-600 dark:text-orange-400" />
+                <div className="w-10 h-10 bg-warning/10 rounded-lg flex items-center justify-center">
+                  <Activity className="w-5 h-5 text-warning" />
                 </div>
                 <div>
-                  <h2 className="text-2xl font-bold text-white mb-2">
+                  <h2 className="text-2xl font-bold text-foreground mb-2">
                     Create Change Order
                   </h2>
-                  <p className="text-slate-400">
+                  <p className="text-muted-foreground">
                     Add a change order to modify project scope or costs
                   </p>
                 </div>
               </div>
               <button
                 onClick={onClose}
-                className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
               >
                 <X className="w-6 h-6" />
               </button>
@@ -221,19 +221,19 @@ const CreateChangeOrderModal: React.FC<CreateChangeOrderModalProps> = ({
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Quote Selection */}
               <div>
-                <label className="block text-sm font-semibold text-slate-300 mb-3">
+                <label className="block text-sm font-semibold text-foreground mb-3">
                   Parent Quote *
                 </label>
                 {loadingQuotes ? (
-                  <div className="flex items-center justify-center py-4 bg-slate-800/50 rounded-xl border border-slate-600/50">
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2"></div>
-                    <span className="text-slate-400">Loading quotes...</span>
+                  <div className="flex items-center justify-center py-4 bg-background rounded-xl border border-border">
+                    <div className="w-4 h-4 border-2 border-muted-foreground/30 border-t-muted-foreground rounded-full animate-spin mr-2"></div>
+                    <span className="text-muted-foreground">Loading quotes...</span>
                   </div>
                 ) : (
                   <select
                     value={formData.quote_id}
                     onChange={(e) => handleInputChange('quote_id', e.target.value)}
-                    className="w-full px-4 py-4 bg-slate-800/50 border border-slate-600/50 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-200"
+                    className="w-full px-4 py-4 bg-background border border-border rounded-xl text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all duration-200"
                     required
                   >
                     <option value="">Select a quote</option>
@@ -248,13 +248,13 @@ const CreateChangeOrderModal: React.FC<CreateChangeOrderModalProps> = ({
 
               {/* Description */}
               <div>
-                <label className="block text-sm font-semibold text-slate-300 mb-3">
+                <label className="block text-sm font-semibold text-foreground mb-3">
                   Description *
                 </label>
                 <textarea
                   value={formData.description}
                   onChange={(e) => handleInputChange('description', e.target.value)}
-                  className="w-full px-4 py-4 bg-slate-800/50 border border-slate-600/50 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-200"
+                  className="w-full px-4 py-4 bg-background border border-border rounded-xl text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all duration-200"
                   placeholder="Describe the change order (e.g., Additional electrical work for new outlets)"
                   rows={3}
                   required
@@ -265,7 +265,7 @@ const CreateChangeOrderModal: React.FC<CreateChangeOrderModalProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Amount */}
                 <div>
-                  <label className="block text-sm font-semibold text-slate-300 mb-3">
+                  <label className="block text-sm font-semibold text-foreground mb-3">
                     Amount *
                   </label>
                   <input
@@ -274,7 +274,7 @@ const CreateChangeOrderModal: React.FC<CreateChangeOrderModalProps> = ({
                     min="0"
                     value={formData.amount}
                     onChange={(e) => handleInputChange('amount', e.target.value)}
-                    className="w-full px-4 py-4 bg-slate-800/50 border border-slate-600/50 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-200"
+                    className="w-full px-4 py-4 bg-background border border-border rounded-xl text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all duration-200"
                     placeholder="0.00"
                     required
                   />
@@ -282,13 +282,13 @@ const CreateChangeOrderModal: React.FC<CreateChangeOrderModalProps> = ({
 
                 {/* Status */}
                 <div>
-                  <label className="block text-sm font-semibold text-slate-300 mb-3">
+                  <label className="block text-sm font-semibold text-foreground mb-3">
                     Status
                   </label>
                   <select
                     value={formData.status}
                     onChange={(e) => handleInputChange('status', e.target.value)}
-                    className="w-full px-4 py-4 bg-slate-800/50 border border-slate-600/50 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-200"
+                    className="w-full px-4 py-4 bg-background border border-border rounded-xl text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all duration-200"
                   >
                     {statusOptions.map((option) => (
                       <option key={option.value} value={option.value}>
@@ -300,10 +300,10 @@ const CreateChangeOrderModal: React.FC<CreateChangeOrderModalProps> = ({
               </div>
 
               {/* Action Buttons */}
-              <div className="flex gap-4 pt-6 border-t border-slate-700/50">
+              <div className="flex gap-4 pt-6 border-t border-border">
                 <Button
                   type="button"
-                  variant="ghost"
+                  variant="secondary"
                   onClick={onClose}
                   className="flex-1"
                 >

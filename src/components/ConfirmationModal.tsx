@@ -29,20 +29,20 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
   const getIconColor = () => {
     switch (type) {
       case 'danger':
-        return 'text-red-400';
+        return 'text-destructive';
       case 'warning':
-        return 'text-yellow-400';
+        return 'text-warning';
       case 'info':
-        return 'text-blue-400';
+        return 'text-primary';
       default:
-        return 'text-yellow-400';
+        return 'text-warning';
     }
   };
 
   const getConfirmButtonVariant = () => {
     switch (type) {
       case 'danger':
-        return 'bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white shadow-lg hover:shadow-xl transform hover:scale-105';
+        return 'destructive';
       default:
         return 'primary';
     }
@@ -58,18 +58,18 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
       
       {/* Modal */}
       <div className="relative z-10 w-full max-w-md transform transition-all duration-300 scale-100">
-        <Card variant="glass" padding="lg" className="relative">
+        <Card variant="default" padding="lg" className="relative">
           {/* Close button */}
           <button
             onClick={onCancel}
-            className="absolute top-4 right-4 p-2 text-slate-400 hover:text-white transition-colors duration-200 rounded-lg hover:bg-white/10"
+            className="absolute top-4 right-4 p-2 text-muted-foreground hover:text-foreground transition-colors duration-200 rounded-lg hover:bg-muted/50"
           >
             <X className="w-5 h-5" />
           </button>
 
           {/* Icon */}
           <div className="flex items-center justify-center mb-6">
-            <div className={`flex items-center justify-center w-16 h-16 rounded-full bg-white/10 backdrop-blur-sm ${getIconColor()}`}>
+            <div className={`flex items-center justify-center w-16 h-16 rounded-full bg-muted/20 ${getIconColor()}`}>
               <AlertTriangle className="w-8 h-8" />
             </div>
           </div>
@@ -77,11 +77,11 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
           {/* Content */}
           <div className="text-center mb-8">
             {title && (
-              <h3 className="text-xl font-semibold text-white mb-3">
+              <h3 className="text-xl font-semibold text-foreground mb-3">
                 {title}
               </h3>
             )}
-            <p className="text-slate-300 leading-relaxed">
+            <p className="text-muted-foreground leading-relaxed">
               {message}
             </p>
           </div>
@@ -89,7 +89,7 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
           {/* Actions */}
           <div className="flex gap-3 justify-end">
             <Button
-              variant="ghost"
+              variant="secondary"
               size="md"
               onClick={onCancel}
               className="min-w-[100px]"
@@ -99,8 +99,8 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
             <Button
               size="md"
               onClick={onConfirm}
-              className={`min-w-[100px] ${type === 'danger' ? getConfirmButtonVariant() : ''}`}
-              variant={type === 'danger' ? undefined : 'primary'}
+              className="min-w-[100px]"
+              variant={getConfirmButtonVariant()}
             >
               {confirmText}
             </Button>

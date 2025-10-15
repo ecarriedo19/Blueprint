@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import Card from './Card';
 import Button from './Button';
 import Toast from './Toast';
 import { 
@@ -203,7 +202,7 @@ const IntegrationsPage: React.FC = () => {
   const isQuickBooksConnected = quickbooksStatus?.connected && !quickbooksStatus?.expired;
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="space-y-6">
       <Toast
         message={toast.message}
         isVisible={toast.isVisible}
@@ -212,20 +211,14 @@ const IntegrationsPage: React.FC = () => {
       />
       
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">
-          Integrations
-        </h1>
-        <p className="text-slate-600 dark:text-slate-400">
-          Connect Blueprint with your favorite tools to streamline your workflow
-        </p>
+      <div>
       </div>
 
       {statusError && (
-        <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+        <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
           <div className="flex items-center gap-3">
-            <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
-            <p className="text-red-800 dark:text-red-200">
+            <AlertCircle className="w-5 h-5 text-destructive" />
+            <p className="text-destructive">
               Failed to load integration status. Please refresh the page.
             </p>
           </div>
@@ -236,43 +229,43 @@ const IntegrationsPage: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         
         {/* QuickBooks Integration */}
-        <Card className="p-6 border border-slate-200 dark:border-slate-700">
+        <div className="bg-card border border-border rounded-lg p-6">
           <div className="flex items-start justify-between mb-4">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/20 rounded-lg flex items-center justify-center">
-                <DollarSign className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+              <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center">
+                <DollarSign className="w-6 h-6 text-primary" />
               </div>
               <div>
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+                <h3 className="text-lg font-semibold text-foreground">
                   QuickBooks
                 </h3>
-                <p className="text-sm text-slate-500 dark:text-slate-400">
+                <p className="text-sm text-muted-foreground">
                   Accounting & Finance
                 </p>
               </div>
             </div>
             
             {statusLoading ? (
-              <div className="w-4 h-4 border-2 border-slate-300 dark:border-slate-600 border-t-blue-600 rounded-full animate-spin" />
+              <div className="w-4 h-4 border-2 border-muted border-t-primary rounded-full animate-spin" />
             ) : isQuickBooksConnected ? (
-              <div className="flex items-center gap-1 text-green-600 dark:text-green-400">
+              <div className="flex items-center gap-1 text-success">
                 <Check className="w-4 h-4" />
                 <span className="text-sm font-medium">Connected</span>
               </div>
             ) : quickbooksStatus?.expired ? (
-              <div className="flex items-center gap-1 text-orange-600 dark:text-orange-400">
+              <div className="flex items-center gap-1 text-warning">
                 <AlertCircle className="w-4 h-4" />
                 <span className="text-sm font-medium">Expired</span>
               </div>
             ) : (
-              <div className="flex items-center gap-1 text-slate-400">
+              <div className="flex items-center gap-1 text-muted-foreground">
                 <LinkIcon className="w-4 h-4" />
                 <span className="text-sm font-medium">Not Connected</span>
               </div>
             )}
           </div>
           
-          <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
+          <p className="text-sm text-muted-foreground mb-6">
             Sync your expense data from QuickBooks to compare against project budgets and eliminate manual data entry.
           </p>
           
@@ -315,123 +308,123 @@ const IntegrationsPage: React.FC = () => {
           </div>
           
           {quickbooksStatus?.realmId && (
-            <div className="mt-4 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
-              <p className="text-xs text-slate-500 dark:text-slate-400">
+            <div className="mt-4 p-3 bg-muted/30 rounded-lg">
+              <p className="text-xs text-muted-foreground">
                 Company ID: {quickbooksStatus.realmId}
               </p>
             </div>
           )}
-        </Card>
+        </div>
 
         {/* Coming Soon - Other Integrations */}
-        <Card className="p-6 border border-slate-200 dark:border-slate-700 opacity-60">
+        <div className="bg-card border border-border rounded-lg p-6 opacity-60">
           <div className="flex items-start justify-between mb-4">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center">
-                <RefreshCw className="w-6 h-6 text-gray-400" />
+              <div className="w-12 h-12 bg-muted/30 rounded-lg flex items-center justify-center">
+                <RefreshCw className="w-6 h-6 text-muted-foreground" />
               </div>
               <div>
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+                <h3 className="text-lg font-semibold text-foreground">
                   Xero
                 </h3>
-                <p className="text-sm text-slate-500 dark:text-slate-400">
+                <p className="text-sm text-muted-foreground">
                   Accounting & Finance
                 </p>
               </div>
             </div>
-            <span className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded-full text-xs font-medium">
+            <span className="px-2 py-1 bg-muted/30 text-muted-foreground rounded-full text-xs font-medium">
               Coming Soon
             </span>
           </div>
           
-          <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
+          <p className="text-sm text-muted-foreground mb-6">
             Connect with Xero for comprehensive financial data synchronization.
           </p>
           
           <Button variant="ghost" fullWidth disabled>
             Coming Soon
           </Button>
-        </Card>
+        </div>
 
-        <Card className="p-6 border border-slate-200 dark:border-slate-700 opacity-60">
+        <div className="bg-card border border-border rounded-lg p-6 opacity-60">
           <div className="flex items-start justify-between mb-4">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center">
-                <RefreshCw className="w-6 h-6 text-gray-400" />
+              <div className="w-12 h-12 bg-muted/30 rounded-lg flex items-center justify-center">
+                <RefreshCw className="w-6 h-6 text-muted-foreground" />
               </div>
               <div>
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+                <h3 className="text-lg font-semibold text-foreground">
                   Procore
                 </h3>
-                <p className="text-sm text-slate-500 dark:text-slate-400">
+                <p className="text-sm text-muted-foreground">
                   Construction Management
                 </p>
               </div>
             </div>
-            <span className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded-full text-xs font-medium">
+            <span className="px-2 py-1 bg-muted/30 text-muted-foreground rounded-full text-xs font-medium">
               Coming Soon
             </span>
           </div>
           
-          <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
+          <p className="text-sm text-muted-foreground mb-6">
             Integrate with Procore for project management and document sharing.
           </p>
           
           <Button variant="ghost" fullWidth disabled>
             Coming Soon
           </Button>
-        </Card>
+        </div>
       </div>
 
       {/* Integration Benefits */}
-      <Card className="mt-8 p-6 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20 border border-blue-200 dark:border-blue-800">
-        <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">
+      <div className="bg-card border border-border rounded-lg p-6">
+        <h3 className="text-lg font-semibold text-foreground mb-4">
           Why Connect Your Tools?
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="flex items-start gap-3">
-            <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
-              <RefreshCw className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+            <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
+              <RefreshCw className="w-4 h-4 text-primary" />
             </div>
             <div>
-              <h4 className="font-medium text-slate-900 dark:text-white mb-1">
+              <h4 className="font-medium text-foreground mb-1">
                 Eliminate Manual Entry
               </h4>
-              <p className="text-sm text-slate-600 dark:text-slate-400">
+              <p className="text-sm text-muted-foreground">
                 Automatically sync data between your tools to save time and reduce errors.
               </p>
             </div>
           </div>
           
           <div className="flex items-start gap-3">
-            <div className="w-8 h-8 bg-purple-100 dark:bg-purple-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
-              <Check className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+            <div className="w-8 h-8 bg-success/10 rounded-lg flex items-center justify-center flex-shrink-0">
+              <Check className="w-4 h-4 text-success" />
             </div>
             <div>
-              <h4 className="font-medium text-slate-900 dark:text-white mb-1">
+              <h4 className="font-medium text-foreground mb-1">
                 Real-time Insights
               </h4>
-              <p className="text-sm text-slate-600 dark:text-slate-400">
+              <p className="text-sm text-muted-foreground">
                 Get up-to-date financial and project data for better decision making.
               </p>
             </div>
           </div>
           
           <div className="flex items-start gap-3">
-            <div className="w-8 h-8 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
-              <DollarSign className="w-4 h-4 text-green-600 dark:text-green-400" />
+            <div className="w-8 h-8 bg-success/10 rounded-lg flex items-center justify-center flex-shrink-0">
+              <DollarSign className="w-4 h-4 text-success" />
             </div>
             <div>
-              <h4 className="font-medium text-slate-900 dark:text-white mb-1">
+              <h4 className="font-medium text-foreground mb-1">
                 Better Budget Control
               </h4>
-              <p className="text-sm text-slate-600 dark:text-slate-400">
+              <p className="text-sm text-muted-foreground">
                 Compare actual expenses against project budgets in real-time.
               </p>
             </div>
           </div>
         </div>
-      </Card>
+      </div>
     </div>
   );
 };

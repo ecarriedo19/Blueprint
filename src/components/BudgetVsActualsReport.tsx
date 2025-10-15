@@ -120,13 +120,13 @@ const BudgetVsActualsReport: React.FC<BudgetVsActualsReportProps> = ({
 
   if (!budgetVsActuals || budgetVsActuals.length === 0) {
     return (
-      <Card variant="glass">
+      <Card variant="default">
         <div className="text-center py-12">
-          <BarChart3 className="w-16 h-16 text-slate-600 mx-auto mb-4" />
-          <h3 className="text-xl font-semibold text-slate-400 mb-2">
+          <BarChart3 className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+          <h3 className="text-xl font-semibold text-muted-foreground mb-2">
             No Budget Data Available
           </h3>
-          <p className="text-slate-500">
+          <p className="text-muted-foreground">
             Approve quotes and log expenses to see budget analysis.
           </p>
         </div>
@@ -135,20 +135,20 @@ const BudgetVsActualsReport: React.FC<BudgetVsActualsReportProps> = ({
   }
 
   return (
-    <Card variant="glass">
+    <Card variant="default">
       {/* Header */}
       <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 mb-8">
         <div>
-          <h2 className="text-3xl font-bold text-white flex items-center gap-3">
-            <BarChart3 className="w-8 h-8 text-blue-400" />
+          <h2 className="text-3xl font-bold text-foreground flex items-center gap-3">
+            <BarChart3 className="w-8 h-8 text-primary" />
             Budget vs. Actuals Analysis
           </h2>
-          <p className="text-slate-400 mt-2">
+          <p className="text-muted-foreground mt-2">
             Real-time financial performance tracking by cost code
           </p>
           {budgetSummary.baselineFrozen && (
-            <div className="mt-2 inline-flex items-center gap-2 px-3 py-1 bg-blue-500/20 border border-blue-500/30 rounded-lg">
-              <span className="text-xs font-semibold text-blue-400">
+            <div className="mt-2 inline-flex items-center gap-2 px-3 py-1 bg-primary/10 border border-primary/20 rounded-lg">
+              <span className="text-xs font-semibold text-primary">
                 📌 Baseline Frozen: {new Date(budgetSummary.baseline?.frozen_at || '').toLocaleDateString()}
               </span>
             </div>
@@ -162,7 +162,7 @@ const BudgetVsActualsReport: React.FC<BudgetVsActualsReportProps> = ({
       </div>
 
       {/* Controls */}
-      <div className="flex flex-wrap items-center justify-between gap-4 mb-6 pb-6 border-b border-slate-700/50">
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-6 pb-6 border-b border-border">
         <div className="flex gap-2">
           <button
             onClick={expandAll}
@@ -191,22 +191,22 @@ const BudgetVsActualsReport: React.FC<BudgetVsActualsReportProps> = ({
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
-            <tr className="border-b border-slate-700/50">
-              <th className="text-left py-3 px-4 text-sm font-semibold text-slate-300 w-12"></th>
+            <tr className="border-b border-border">
+              <th className="text-left py-3 px-4 text-sm font-semibold text-muted-foreground w-12"></th>
               <th
-                className="text-left py-3 px-4 text-sm font-semibold text-slate-300 cursor-pointer hover:text-white"
+                className="text-left py-3 px-4 text-sm font-semibold text-muted-foreground cursor-pointer hover:text-foreground"
                 onClick={() => handleSort('code')}
               >
                 <div className="flex items-center gap-2">
                   Cost Code
                   {sortBy === 'code' && (
-                    <span className="text-blue-400">
+                    <span className="text-primary">
                       {sortOrder === 'asc' ? '↑' : '↓'}
                     </span>
                   )}
                 </div>
               </th>
-              <th className="text-left py-3 px-4 text-sm font-semibold text-slate-300">
+              <th className="text-left py-3 px-4 text-sm font-semibold text-muted-foreground">
                 Description
               </th>
               <th

@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useProjects } from '../utils/queries';
 import { useProjects as useProjectMutations } from '../contexts/ProjectState';
-import Card from './Card';
+
 import Button from './Button';
 import ConfirmationModal from './ConfirmationModal';
 import { MoreVertical, Trash2 } from 'lucide-react';
@@ -43,46 +43,46 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, onClose
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white dark:bg-slate-800 rounded-xl p-6 w-full max-w-md mx-4">
-        <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-4">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-background border border-border rounded-xl p-6 w-full max-w-md mx-4 shadow-lg">
+        <h3 className="text-xl font-semibold text-foreground mb-4">
           Create New Project
         </h3>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+            <label className="block text-sm font-medium text-foreground mb-1">
               Project Name *
             </label>
             <input
               type="text"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-slate-700 dark:text-white"
+              className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-ring focus:border-primary bg-background text-foreground"
               placeholder="Enter project name..."
               required
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+            <label className="block text-sm font-medium text-foreground mb-1">
               Description
             </label>
             <textarea
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-slate-700 dark:text-white"
+              className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-ring focus:border-primary bg-background text-foreground"
               placeholder="Describe your project..."
               rows={3}
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+              <label className="block text-sm font-medium text-foreground mb-1">
                 Status
               </label>
               <select
                 value={formData.status}
                 onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-slate-700 dark:text-white"
+                className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-ring focus:border-primary bg-background text-foreground"
               >
                 <option value="planning">Planning</option>
                 <option value="in-progress">In Progress</option>
@@ -92,13 +92,13 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, onClose
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+              <label className="block text-sm font-medium text-foreground mb-1">
                 Priority
               </label>
               <select
                 value={formData.priority}
                 onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-slate-700 dark:text-white"
+                className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-ring focus:border-primary bg-background text-foreground"
               >
                 <option value="low">Low</option>
                 <option value="medium">Medium</option>
@@ -130,125 +130,30 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, onClose
   );
 };
 
-interface ProjectCardProps {
-  project: {
-    id: number;
-    name: string;
-    description: string;
-    status: string;
-    priority: string;
-    created_at: string;
-    updated_at: string;
-  };
-  onUpdate: (projectId: number, updates: any) => void;
-  isSelected?: boolean;
-  onSelect?: (id: number) => void;
-  showCheckbox?: boolean;
-}
 
-const ProjectCard: React.FC<ProjectCardProps> = ({ project, onUpdate, isSelected = false, onSelect, showCheckbox = false }) => {
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'planning': return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
-      case 'in-progress': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
-      case 'review': return 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200';
-      case 'completed': return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
-      case 'on-hold': return 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200';
-      default: return 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200';
-    }
-  };
-
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'urgent': return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
-      case 'high': return 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200';
-      case 'medium': return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
-      case 'low': return 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200';
-      default: return 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200';
-    }
-  };
-
-  return (
-    <Card className="hover:shadow-lg transition-all duration-200 border border-slate-200 dark:border-slate-700 relative">
-      {/* Checkbox for selection */}
-      {showCheckbox && onSelect && (
-        <div className="absolute top-4 left-4 z-10" onClick={(e) => e.preventDefault()}>
-          <input
-            type="checkbox"
-            checked={isSelected}
-            onChange={(e) => {
-              e.stopPropagation();
-              onSelect(project.id);
-            }}
-            onClick={(e) => e.stopPropagation()}
-            className="w-5 h-5 rounded border-slate-600 bg-slate-800/50 text-blue-500 focus:ring-2 focus:ring-blue-500 cursor-pointer"
-          />
-        </div>
-      )}
-      <div className={`p-6 ${showCheckbox ? 'pl-12' : ''}`}>
-        <div className="flex items-start justify-between mb-3">
-          <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
-            {project.name}
-          </h3>
-          <div className="flex gap-2">
-            <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(project.status)}`}>
-              {project.status.replace('-', ' ')}
-            </span>
-            <span className={`px-2 py-1 rounded-full text-xs font-medium ${getPriorityColor(project.priority)}`}>
-              {project.priority}
-            </span>
-          </div>
-        </div>
-        
-        {project.description && (
-          <p className="text-slate-600 dark:text-slate-300 mb-4 line-clamp-2">
-            {project.description}
-          </p>
-        )}
-        
-        <div className="flex items-center justify-between text-sm text-slate-500 dark:text-slate-400">
-          <span>Created {new Date(project.created_at).toLocaleDateString()}</span>
-          <span>Updated {new Date(project.updated_at).toLocaleDateString()}</span>
-        </div>
-        
-        <div className="mt-4 flex gap-2">
-          <select
-            value={project.status}
-            onChange={(e) => onUpdate(project.id, { status: e.target.value })}
-            className="text-xs px-2 py-1 border border-slate-300 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 dark:text-white"
-          >
-            <option value="planning">Planning</option>
-            <option value="in-progress">In Progress</option>
-            <option value="review">Review</option>
-            <option value="completed">Completed</option>
-            <option value="on-hold">On Hold</option>
-          </select>
-          
-          <select
-            value={project.priority}
-            onChange={(e) => onUpdate(project.id, { priority: e.target.value })}
-            className="text-xs px-2 py-1 border border-slate-300 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 dark:text-white"
-          >
-            <option value="low">Low</option>
-            <option value="medium">Medium</option>
-            <option value="high">High</option>
-            <option value="urgent">Urgent</option>
-          </select>
-        </div>
-      </div>
-    </Card>
-  );
-};
 
 const ProjectsPage: React.FC<ProjectsPageProps> = ({ currentUser }) => {
   const { data: projects = [], isLoading: loading, error } = useProjects();
   const { addProject, updateProject, bulkAction } = useProjectMutations();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterPriority, setFilterPriority] = useState('all');
   const [selectedProjects, setSelectedProjects] = useState<number[]>([]);
   const [showBulkActions, setShowBulkActions] = useState(false);
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
+
+  // Handle URL parameter for opening create modal
+  useEffect(() => {
+    if (searchParams.get('create') === 'true') {
+      setIsCreateModalOpen(true);
+      // Remove the parameter from URL
+      setSearchParams(params => {
+        params.delete('create');
+        return params;
+      });
+    }
+  }, [searchParams, setSearchParams]);
 
   // Role-based permission check
   const canModifyProjects = () => {
@@ -303,11 +208,13 @@ const ProjectsPage: React.FC<ProjectsPageProps> = ({ currentUser }) => {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="animate-pulse">
-          <div className="h-8 bg-slate-200 dark:bg-slate-700 rounded w-1/3 mb-4"></div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[1, 2, 3].map(i => (
-              <div key={i} className="h-48 bg-slate-200 dark:bg-slate-700 rounded-lg"></div>
-            ))}
+          <div className="h-8 bg-muted rounded w-1/3 mb-6"></div>
+          <div className="bg-card border border-border rounded-lg p-6">
+            <div className="space-y-4">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="h-16 bg-muted rounded"></div>
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -317,17 +224,18 @@ const ProjectsPage: React.FC<ProjectsPageProps> = ({ currentUser }) => {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {error && (
-        <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-          <p className="text-red-800 dark:text-red-200">{error instanceof Error ? error.message : 'An error occurred'}</p>
+        <div className="mb-6 p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
+          <p className="text-destructive">{error instanceof Error ? error.message : 'An error occurred'}</p>
         </div>
       )}
 
+      {/* Filter and Action Bar */}
       <div className="mb-6 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
         <div className="flex gap-3">
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
-            className="px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 dark:text-white"
+            className="px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-ring focus:border-primary bg-background text-foreground"
           >
             <option value="all">All Status</option>
             <option value="planning">Planning</option>
@@ -340,7 +248,7 @@ const ProjectsPage: React.FC<ProjectsPageProps> = ({ currentUser }) => {
           <select
             value={filterPriority}
             onChange={(e) => setFilterPriority(e.target.value)}
-            className="px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 dark:text-white"
+            className="px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-ring focus:border-primary bg-background text-foreground"
           >
             <option value="all">All Priority</option>
             <option value="urgent">Urgent</option>
@@ -373,9 +281,9 @@ const ProjectsPage: React.FC<ProjectsPageProps> = ({ currentUser }) => {
 
       {/* Bulk Actions Toolbar */}
       {showBulkActions && selectedProjects.length > 0 && (
-        <Card variant="glass" className="mb-6 p-4">
+        <div className="mb-6 p-4 bg-primary/10 border border-primary/20 rounded-lg">
           <div className="flex items-center justify-between">
-            <span className="text-white font-medium">
+            <span className="text-foreground font-medium">
               {selectedProjects.length} project{selectedProjects.length > 1 ? 's' : ''} selected
             </span>
             <div className="flex gap-2">
@@ -387,7 +295,7 @@ const ProjectsPage: React.FC<ProjectsPageProps> = ({ currentUser }) => {
                 Clear Selection
               </Button>
               <Button
-                variant="danger"
+                variant="destructive"
                 onClick={() => setShowBulkDeleteModal(true)}
                 size="sm"
                 className="flex items-center gap-2"
@@ -397,7 +305,7 @@ const ProjectsPage: React.FC<ProjectsPageProps> = ({ currentUser }) => {
               </Button>
             </div>
           </div>
-        </Card>
+        </div>
       )}
 
       {filteredProjects.length === 0 ? (
@@ -424,21 +332,144 @@ const ProjectsPage: React.FC<ProjectsPageProps> = ({ currentUser }) => {
           </Button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredProjects.map(project => (
-            <Link
-              key={project.id}
-              to={`/projects/${project.id}`}
-            >
-              <ProjectCard
-                project={project}
-                onUpdate={handleUpdateProject}
-                isSelected={selectedProjects.includes(project.id)}
-                onSelect={handleSelectProject}
-                showCheckbox={showBulkActions}
-              />
-            </Link>
-          ))}
+        <div className="bg-card border border-border rounded-lg">
+          {/* Table Header */}
+          <div className="bg-muted/30 border-b border-border px-6 py-4">
+            <div className="grid grid-cols-12 gap-4 items-center text-sm font-medium text-muted-foreground">
+              {showBulkActions && (
+                <div className="col-span-1">
+                  <input
+                    type="checkbox"
+                    checked={selectedProjects.length === filteredProjects.length && filteredProjects.length > 0}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedProjects(filteredProjects.map(p => p.id));
+                      } else {
+                        setSelectedProjects([]);
+                      }
+                    }}
+                    className="w-4 h-4 text-primary bg-background border-border rounded focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+              )}
+              <div className={showBulkActions ? "col-span-4" : "col-span-5"}>
+                Project Name
+              </div>
+              <div className="col-span-2">
+                Status
+              </div>
+              <div className="col-span-2">
+                Priority
+              </div>
+              <div className="col-span-2">
+                Created
+              </div>
+              <div className="col-span-1">
+                Actions
+              </div>
+            </div>
+          </div>
+
+          {/* Table Content */}
+          <div className="divide-y divide-border">
+            {filteredProjects.map(project => (
+              <div key={project.id} className="px-6 py-4 hover:bg-muted/30 transition-colors">
+                <div className="grid grid-cols-12 gap-4 items-center">
+                  {showBulkActions && (
+                    <div className="col-span-1">
+                      <input
+                        type="checkbox"
+                        checked={selectedProjects.includes(project.id)}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          handleSelectProject(project.id);
+                        }}
+                        className="w-4 h-4 text-primary bg-background border-border rounded focus:ring-2 focus:ring-primary"
+                      />
+                    </div>
+                  )}
+                  <div className={showBulkActions ? "col-span-4" : "col-span-5"}>
+                    <Link
+                      to={`/projects/${project.id}`}
+                      className="block hover:text-primary transition-colors"
+                    >
+                      <div>
+                        <h3 className="font-medium text-foreground mb-1">
+                          {project.name}
+                        </h3>
+                        {project.description && (
+                          <p className="text-sm text-muted-foreground line-clamp-1">
+                            {project.description}
+                          </p>
+                        )}
+                      </div>
+                    </Link>
+                  </div>
+                  <div className="col-span-2">
+                    <select
+                      value={project.status}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        handleUpdateProject(project.id, { status: e.target.value });
+                      }}
+                      className={`px-2 py-1 rounded-full text-xs font-medium border focus:ring-2 focus:ring-primary focus:outline-none ${
+                        project.status === 'completed' 
+                          ? 'bg-success/10 text-success border-success/20' 
+                          : project.status === 'in-progress'
+                          ? 'bg-warning/10 text-warning border-warning/20'
+                          : project.status === 'planning'
+                          ? 'bg-primary/10 text-primary border-primary/20'
+                          : project.status === 'review'
+                          ? 'bg-accent/10 text-accent border-accent/20'
+                          : 'bg-muted/10 text-muted-foreground border-border'
+                      }`}
+                    >
+                      <option value="planning">Planning</option>
+                      <option value="in-progress">In Progress</option>
+                      <option value="review">Review</option>
+                      <option value="completed">Completed</option>
+                      <option value="on-hold">On Hold</option>
+                    </select>
+                  </div>
+                  <div className="col-span-2">
+                    <select
+                      value={project.priority}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        handleUpdateProject(project.id, { priority: e.target.value });
+                      }}
+                      className={`px-2 py-1 rounded-full text-xs font-medium border focus:ring-2 focus:ring-primary focus:outline-none ${
+                        project.priority === 'urgent' 
+                          ? 'bg-destructive/10 text-destructive border-destructive/20' 
+                          : project.priority === 'high'
+                          ? 'bg-warning/10 text-warning border-warning/20'
+                          : project.priority === 'medium'
+                          ? 'bg-primary/10 text-primary border-primary/20'
+                          : 'bg-muted/10 text-muted-foreground border-border'
+                      }`}
+                    >
+                      <option value="low">Low</option>
+                      <option value="medium">Medium</option>
+                      <option value="high">High</option>
+                      <option value="urgent">Urgent</option>
+                    </select>
+                  </div>
+                  <div className="col-span-2">
+                    <span className="text-sm text-muted-foreground">
+                      {new Date(project.created_at).toLocaleDateString()}
+                    </span>
+                  </div>
+                  <div className="col-span-1">
+                    <Link to={`/projects/${project.id}`}>
+                      <Button variant="ghost" size="sm">
+                        View
+                      </Button>
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

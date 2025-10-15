@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import Sidebar from './Sidebar';
-import NotificationBell from './NotificationBell';
+import Header from './layout/Header';
 import { useNotifications } from '../contexts/NotificationContext';
 import Dashboard from './Dashboard';
 import ProjectsPage from './ProjectsPage';
@@ -14,6 +14,14 @@ import IntegrationsPage from './IntegrationsPage';
 import SettingsPage from './SettingsPage';
 import VendorsDataPage from './VendorsDataPage';
 import { TeamMutationsProvider } from '../contexts/TeamMutations';
+
+// Settings page components
+import CompanyProfilePage from './settings/CompanyProfilePage';
+import BillingPage from './settings/BillingPage';
+import TeamMembersPage from './settings/TeamMembersPage';
+import CostCodesPage from './settings/CostCodesPage';
+import SecurityPage from './settings/SecurityPage';
+import SettingsIntegrationsPage from './settings/IntegrationsPage';
 
 interface DashboardLayoutProps {
   companyName: string;
@@ -31,44 +39,56 @@ const DashboardLayout = ({ companyName, updateCompanyName, currentUser, onLogout
   };
 
   return (
-    <div className="flex h-screen bg-gray-50 dark:bg-gradient-to-br dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 text-gray-900 dark:text-white transition-colors duration-300">
+    <div className="flex h-screen bg-background text-foreground transition-colors duration-300">
       <Sidebar 
         isSidebarOpen={isSidebarOpen} 
         toggleSidebar={toggleSidebar} 
-        currentUser={currentUser}
         onLogout={onLogout} 
       />
 
-      <main className="flex-1 overflow-y-auto relative">
-        {/* Notification Bell - Fixed Position */}
-        <div className="fixed top-6 right-6 z-[60]">
-          <NotificationBell 
-            notifications={state.notifications}
-            unreadCount={state.unreadCount}
-            onMarkAsRead={markAsRead}
-            onMarkAllAsRead={markAllAsRead}
-          />
-        </div>
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Header */}
+        <Header 
+          notifications={state.notifications}
+          unreadCount={state.unreadCount}
+          onMarkAsRead={markAsRead}
+          onMarkAllAsRead={markAllAsRead}
+        />
 
-        <div className="p-8 pr-20">
-          <Routes>
-            <Route path="/" element={<Dashboard companyName={companyName} />} />
-            <Route path="/projects" element={<ProjectsPage currentUser={currentUser} />} />
-            <Route path="/projects/:id" element={<ViewProjectPage />} />
-            <Route path="/quotes" element={<QuotesPage currentUser={currentUser} />} />
-            <Route path="/quotes/:id" element={<ViewQuotePage currentUser={currentUser} />} />
-            <Route path="/ai-copilot" element={<AiCopilotPage />} />
-            <Route path="/reports" element={<ReportsPage />} />
-            <Route path="/integrations" element={<IntegrationsPage />} />
-            <Route path="/vendors" element={<VendorsDataPage />} />
-            <Route path="/settings" element={
-              <TeamMutationsProvider>
-                <SettingsPage companyName={companyName} updateCompanyName={updateCompanyName} currentUser={currentUser} />
-              </TeamMutationsProvider>
-            } />
-          </Routes>
-        </div>
-      </main>
+        {/* Main Content */}
+        <main className="flex-1 overflow-y-auto bg-muted/30">
+            <div className="py-6 px-4 sm:px-6 lg:px-8">
+              <Routes>
+                <Route path="/" element={<Dashboard companyName={companyName} />} />
+                <Route path="/projects" element={<ProjectsPage currentUser={currentUser} />} />
+                <Route path="/projects/:id" element={<ViewProjectPage />} />
+                <Route path="/quotes" element={<QuotesPage currentUser={currentUser} />} />
+                <Route path="/quotes/:id" element={<ViewQuotePage currentUser={currentUser} />} />
+                <Route path="/ai-copilot" element={<AiCopilotPage />} />
+                <Route path="/reports" element={<ReportsPage />} />
+                <Route path="/integrations" element={<IntegrationsPage />} />
+                <Route path="/vendors" element={<VendorsDataPage />} />
+                <Route path="/settings" element={<SettingsPage currentUser={currentUser} />} />
+                <Route path="/settings/profile" element={
+                  <CompanyProfilePage 
+                    companyName={companyName} 
+                    updateCompanyName={updateCompanyName} 
+                    currentUser={currentUser} 
+                  />
+                } />
+                <Route path="/settings/billing" element={<BillingPage currentUser={currentUser} />} />
+                <Route path="/settings/team" element={
+                  <TeamMutationsProvider>
+                    <TeamMembersPage />
+                  </TeamMutationsProvider>
+                } />
+                <Route path="/settings/cost-codes" element={<CostCodesPage />} />
+                <Route path="/settings/integrations" element={<SettingsIntegrationsPage />} />
+                <Route path="/settings/security" element={<SecurityPage />} />
+              </Routes>
+            </div>
+        </main>
+      </div>
     </div>
   );
 };

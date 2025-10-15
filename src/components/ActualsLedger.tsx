@@ -157,12 +157,12 @@ const ActualsLedger: React.FC<ActualsLedgerProps> = ({ projectId, onSuccess }) =
 
   return (
     <>
-      <Card variant="glass">
+      <Card variant="default">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h3 className="text-2xl font-bold text-white">Actual Costs Ledger</h3>
-            <p className="text-slate-400 mt-1">
+            <h3 className="text-2xl font-bold text-foreground">Actual Costs Ledger</h3>
+            <p className="text-muted-foreground mt-1">
               Track and manage actual expenses for this project
             </p>
           </div>
@@ -181,13 +181,13 @@ const ActualsLedger: React.FC<ActualsLedgerProps> = ({ projectId, onSuccess }) =
           {/* Search */}
           <div className="flex-1 min-w-[200px]">
             <div className="relative">
-              <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5" />
+              <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-5 h-5" />
               <input
                 type="text"
                 placeholder="Search expenses..."
                 value={searchFilter}
                 onChange={(e) => setSearchFilter(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-slate-800/50 border border-slate-600/50 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full pl-10 pr-4 py-2 bg-background border border-border rounded-lg text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
               />
             </div>
           </div>
@@ -196,7 +196,7 @@ const ActualsLedger: React.FC<ActualsLedgerProps> = ({ projectId, onSuccess }) =
           <select
             value={costCodeFilter}
             onChange={(e) => setCostCodeFilter(e.target.value)}
-            className="px-4 py-2 bg-slate-800/50 border border-slate-600/50 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-4 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
           >
             <option value="">All Cost Codes</option>
             {uniqueCostCodes.map(code => (
@@ -219,11 +219,11 @@ const ActualsLedger: React.FC<ActualsLedgerProps> = ({ projectId, onSuccess }) =
         {/* Table */}
         {filteredAndSortedActuals.length === 0 ? (
           <div className="text-center py-12">
-            <Package className="w-16 h-16 text-slate-600 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-slate-400 mb-2">
+            <Package className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+            <h3 className="text-xl font-semibold text-muted-foreground mb-2">
               {actuals.length === 0 ? 'No expenses logged yet' : 'No expenses match your filters'}
             </h3>
-            <p className="text-slate-500 mb-6">
+            <p className="text-muted-foreground mb-6">
               {actuals.length === 0 
                 ? 'Start tracking actual costs by logging your first expense.'
                 : 'Try adjusting your search or filter criteria.'
@@ -245,9 +245,9 @@ const ActualsLedger: React.FC<ActualsLedgerProps> = ({ projectId, onSuccess }) =
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="border-b border-slate-700/50">
+                  <tr className="border-b border-border">
                     <th
-                      className="text-left py-3 px-4 text-sm font-semibold text-slate-300 cursor-pointer hover:text-white"
+                      className="text-left py-3 px-4 text-sm font-semibold text-muted-foreground cursor-pointer hover:text-foreground"
                       onClick={() => handleSort('date')}
                     >
                       <div className="flex items-center gap-2">

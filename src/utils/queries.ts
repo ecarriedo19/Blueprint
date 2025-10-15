@@ -4,6 +4,21 @@ import { checkRedirectResult } from './googleAuth';
 import type { Project } from '../contexts/ProjectState';
 import type { Quote } from '../contexts/QuoteContext';
 
+// User interface matching backend response
+export interface User {
+  id: number;
+  googleId?: string;
+  email: string;
+  name: string;
+  profilePictureUrl?: string;
+  provider?: string;
+  role?: string;
+  hasCompletedOnboarding?: number;
+  subscriptionStatus?: string;
+  stripeCustomerId?: string;
+  companyName?: string;
+}
+
 // Projects queries
 export const useProjects = () => {
   return useQuery({
@@ -234,7 +249,7 @@ export const useDashboardSummary = (enabled: boolean = true) => {
 export const useCurrentUser = () => {
   return useQuery({
     queryKey: ['currentUser'],
-    queryFn: async () => {
+    queryFn: async (): Promise<User | null> => {
       // First check for redirect result from Google OAuth
       const redirectUser = await checkRedirectResult();
       if (redirectUser) {

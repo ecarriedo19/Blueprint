@@ -25,7 +25,7 @@ const CostCodesPage: React.FC<CostCodesPageProps> = ({ onSuccess }) => {
   });
 
   const { data: templatesData, isLoading: templatesLoading } = useCostCodeTemplates();
-  const { addCostCode, updateCostCode, deleteCostCode, importTemplate } = useCostCodeMutations();
+  const { deleteCostCode, importTemplate } = useCostCodeMutations();
 
   // Get unique divisions for filter
   const divisions = Array.from(new Set(costCodes.map(code => code.division).filter(Boolean)));
@@ -80,7 +80,7 @@ const CostCodesPage: React.FC<CostCodesPageProps> = ({ onSuccess }) => {
     return (
       <div className="p-8">
         <PageHeader title="Cost Code Library" />
-        <div className="text-center py-12 text-red-600 dark:text-red-400">
+        <div className="text-center py-12 text-destructive">
           Error loading cost codes: {error.message}
         </div>
       </div>
@@ -89,21 +89,19 @@ const CostCodesPage: React.FC<CostCodesPageProps> = ({ onSuccess }) => {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Cost Code Library" />
-
       {/* Action Bar */}
       <Card>
         <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
           <div className="flex-1 w-full md:w-auto flex gap-2">
             {/* Search */}
             <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-5 h-5" />
               <input
                 type="text"
                 placeholder="Search by code or description..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                className="w-full pl-10 pr-4 py-2 border border-border rounded-lg focus:ring-2 focus:ring-ring bg-background text-foreground placeholder-muted-foreground"
               />
             </div>
 
@@ -111,7 +109,7 @@ const CostCodesPage: React.FC<CostCodesPageProps> = ({ onSuccess }) => {
             <select
               value={selectedDivision}
               onChange={(e) => setSelectedDivision(e.target.value)}
-              className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+              className="px-4 py-2 border border-border rounded-lg focus:ring-2 focus:ring-ring bg-background text-foreground"
             >
               <option value="">All Divisions</option>
               {divisions.map(division => (
@@ -141,7 +139,7 @@ const CostCodesPage: React.FC<CostCodesPageProps> = ({ onSuccess }) => {
       <Card>
         {costCodes.length === 0 ? (
           <div className="text-center py-12">
-            <p className="text-gray-500 dark:text-gray-400 mb-4">
+            <p className="text-muted-foreground mb-4">
               No cost codes found. {searchTerm || selectedDivision ? 'Try adjusting your filters.' : 'Get started by creating a custom code or importing CSI templates.'}
             </p>
             <div className="flex gap-2 justify-center">
@@ -158,46 +156,46 @@ const CostCodesPage: React.FC<CostCodesPageProps> = ({ onSuccess }) => {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-gray-50 dark:bg-gray-800">
+              <thead className="bg-muted/50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Code
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Description
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Division
                   </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
+              <tbody className="bg-card divide-y divide-border">
                 {costCodes.map((code) => (
-                  <tr key={code.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
+                  <tr key={code.id} className="hover:bg-muted/30">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">
                       {code.code}
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-700 dark:text-gray-300">
+                    <td className="px-6 py-4 text-sm text-foreground">
                       {code.description}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
                       {code.division || '—'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex justify-end gap-2">
                         <button
                           onClick={() => setEditingCode(code)}
-                          className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
+                          className="text-primary hover:text-primary/80 p-1 hover:bg-primary/10 rounded transition-colors"
                           title="Edit"
                         >
                           <Edit2 className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => handleDeleteCode(code)}
-                          className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"
+                          className="text-destructive hover:text-destructive/80 p-1 hover:bg-destructive/10 rounded transition-colors"
                           title="Delete"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -286,14 +284,14 @@ const CostCodeFormModal: React.FC<CostCodeFormModalProps> = ({ code, onClose, on
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full">
-        <div className="flex justify-between items-center p-6 border-b border-gray-200 dark:border-gray-700">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+      <div className="bg-card border border-border rounded-lg shadow-xl max-w-md w-full">
+        <div className="flex justify-between items-center p-6 border-b border-border">
+          <h3 className="text-lg font-semibold text-foreground">
             {code ? 'Edit Cost Code' : 'Create Custom Cost Code'}
           </h3>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+            className="text-muted-foreground hover:text-foreground"
           >
             <X className="w-5 h-5" />
           </button>
@@ -301,8 +299,8 @@ const CostCodeFormModal: React.FC<CostCodeFormModalProps> = ({ code, onClose, on
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Code <span className="text-red-500">*</span>
+            <label className="block text-sm font-medium text-foreground mb-1">
+              Code <span className="text-destructive">*</span>
             </label>
             <input
               type="text"
@@ -310,13 +308,13 @@ const CostCodeFormModal: React.FC<CostCodeFormModalProps> = ({ code, onClose, on
               value={formData.code}
               onChange={(e) => setFormData({ ...formData, code: e.target.value })}
               placeholder="e.g., 01 11 00"
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+              className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-ring bg-background text-foreground placeholder-muted-foreground"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Description <span className="text-red-500">*</span>
+            <label className="block text-sm font-medium text-foreground mb-1">
+              Description <span className="text-destructive">*</span>
             </label>
             <input
               type="text"
@@ -324,12 +322,12 @@ const CostCodeFormModal: React.FC<CostCodeFormModalProps> = ({ code, onClose, on
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               placeholder="e.g., Summary of Work"
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+              className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-ring bg-background text-foreground placeholder-muted-foreground"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-foreground mb-1">
               Division (Optional)
             </label>
             <input
@@ -337,7 +335,7 @@ const CostCodeFormModal: React.FC<CostCodeFormModalProps> = ({ code, onClose, on
               value={formData.division}
               onChange={(e) => setFormData({ ...formData, division: e.target.value })}
               placeholder="e.g., 01 - General Requirements"
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+              className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-ring bg-background text-foreground placeholder-muted-foreground"
             />
           </div>
 
@@ -405,14 +403,14 @@ const ImportTemplateModal: React.FC<ImportTemplateModalProps> = ({ templatesData
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col">
-        <div className="flex justify-between items-center p-6 border-b border-gray-200 dark:border-gray-700">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+      <div className="bg-card border border-border rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col">
+        <div className="flex justify-between items-center p-6 border-b border-border">
+          <h3 className="text-lg font-semibold text-foreground">
             Import CSI MasterFormat Template
           </h3>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+            className="text-muted-foreground hover:text-foreground"
           >
             <X className="w-5 h-5" />
           </button>
@@ -421,13 +419,13 @@ const ImportTemplateModal: React.FC<ImportTemplateModalProps> = ({ templatesData
         <div className="p-6 space-y-4 flex-1 overflow-y-auto">
           {/* Search */}
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-5 h-5" />
             <input
               type="text"
               placeholder="Search templates..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+              className="w-full pl-10 pr-4 py-2 border border-border rounded-lg focus:ring-2 focus:ring-ring bg-background text-foreground placeholder-muted-foreground"
             />
           </div>
 
@@ -436,13 +434,13 @@ const ImportTemplateModal: React.FC<ImportTemplateModalProps> = ({ templatesData
           ) : (
             <div className="space-y-2">
               {filteredDivisions.map(division => (
-                <div key={division} className="border border-gray-200 dark:border-gray-700 rounded-lg">
+                <div key={division} className="border border-border rounded-lg">
                   <button
                     onClick={() => toggleDivision(division)}
-                    className="w-full px-4 py-3 flex justify-between items-center bg-gray-50 dark:bg-gray-750 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+                    className="w-full px-4 py-3 flex justify-between items-center bg-muted/50 hover:bg-muted rounded-lg"
                   >
-                    <span className="font-medium text-gray-900 dark:text-white">{division}</span>
-                    <span className="text-sm text-gray-500 dark:text-gray-400">
+                    <span className="font-medium text-foreground">{division}</span>
+                    <span className="text-sm text-muted-foreground">
                       {groupedTemplates[division].length} codes
                     </span>
                   </button>
@@ -464,21 +462,21 @@ const ImportTemplateModal: React.FC<ImportTemplateModalProps> = ({ templatesData
                             }}
                             className={`w-full px-4 py-2 text-left rounded-lg transition-colors ${
                               selectedTemplate?.id === template.id
-                                ? 'bg-blue-100 dark:bg-blue-900 border-2 border-blue-500'
-                                : 'bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750 border border-gray-200 dark:border-gray-700'
+                                ? 'bg-primary/10 border-2 border-primary'
+                                : 'bg-card hover:bg-muted/50 border border-border'
                             }`}
                           >
                             <div className="flex items-center justify-between">
                               <div>
-                                <div className="font-mono text-sm font-medium text-gray-900 dark:text-white">
+                                <div className="font-mono text-sm font-medium text-foreground">
                                   {template.code}
                                 </div>
-                                <div className="text-sm text-gray-600 dark:text-gray-400">
+                                <div className="text-sm text-muted-foreground">
                                   {template.description}
                                 </div>
                               </div>
                               {selectedTemplate?.id === template.id && (
-                                <Check className="w-5 h-5 text-blue-500" />
+                                <Check className="w-5 h-5 text-primary" />
                               )}
                             </div>
                           </button>
@@ -491,20 +489,20 @@ const ImportTemplateModal: React.FC<ImportTemplateModalProps> = ({ templatesData
           )}
 
           {selectedTemplate && (
-            <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-              <h4 className="font-medium text-gray-900 dark:text-white mb-2">Customize Description (Optional)</h4>
+            <div className="mt-4 p-4 bg-primary/5 border border-primary/20 rounded-lg">
+              <h4 className="font-medium text-foreground mb-2">Customize Description (Optional)</h4>
               <input
                 type="text"
                 value={customDescription}
                 onChange={(e) => setCustomDescription(e.target.value)}
                 placeholder={selectedTemplate.description}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-ring bg-background text-foreground placeholder-muted-foreground"
               />
             </div>
           )}
         </div>
 
-        <div className="p-6 border-t border-gray-200 dark:border-gray-700 flex gap-3">
+        <div className="p-6 border-t border-border flex gap-3">
           <Button
             onClick={onClose}
             variant="outline"

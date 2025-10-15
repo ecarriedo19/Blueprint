@@ -176,27 +176,27 @@ const CreateQuoteModal: React.FC<CreateQuoteModalProps> = ({
       className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm overflow-y-auto"
       onClick={handleOverlayClick}
     >
-      <div className="min-h-screen flex items-center justify-center p-4 py-8">
-        <div className="w-full max-w-2xl my-8">
-          <Card variant="glass" className="relative animate-fade-in">
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <div className="w-full max-w-2xl">
+          <Card variant="default" className="relative animate-fade-in">
             {/* Modal Header */}
             <div className="flex items-center justify-between mb-8">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-blue-500/10 dark:bg-blue-400/10 rounded-lg flex items-center justify-center">
-                  <FileText className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
+                  <FileText className="w-5 h-5 text-primary" />
                 </div>
                 <div>
-                  <h2 className="text-2xl font-bold text-white mb-2">
+                  <h2 className="text-2xl font-bold text-foreground mb-2">
                     Create New Quote
                   </h2>
-                  <p className="text-slate-400">
+                  <p className="text-muted-foreground">
                     Create a quote for this project
                   </p>
                 </div>
               </div>
               <button
                 onClick={onClose}
-                className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
               >
                 <X className="w-6 h-6" />
               </button>
@@ -207,27 +207,27 @@ const CreateQuoteModal: React.FC<CreateQuoteModalProps> = ({
               {/* Quote Name and Status */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-sm font-semibold text-slate-300 mb-3">
+                  <label className="block text-sm font-semibold text-foreground mb-3">
                     Quote Name *
                   </label>
                   <input
                     type="text"
                     value={formData.quoteName}
                     onChange={(e) => handleInputChange('quoteName', e.target.value)}
-                    className="w-full px-4 py-4 bg-slate-800/50 border border-slate-600/50 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                    className="w-full px-4 py-4 bg-background border border-border rounded-xl text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all duration-200"
                     placeholder="Kitchen Renovation Quote"
                     required
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-semibold text-slate-300 mb-3">
+                  <label className="block text-sm font-semibold text-foreground mb-3">
                     Status
                   </label>
                   <select
                     value={formData.status}
                     onChange={(e) => handleInputChange('status', e.target.value)}
-                    className="w-full px-4 py-4 bg-slate-800/50 border border-slate-600/50 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                    className="w-full px-4 py-4 bg-background border border-border rounded-xl text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all duration-200"
                   >
                     {statusOptions.map((option) => (
                       <option key={option.value} value={option.value}>
@@ -241,28 +241,28 @@ const CreateQuoteModal: React.FC<CreateQuoteModalProps> = ({
               {/* Client Information */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-sm font-semibold text-slate-300 mb-3">
+                  <label className="block text-sm font-semibold text-foreground mb-3">
                     Client Name *
                   </label>
                   <input
                     type="text"
                     value={formData.clientName}
                     onChange={(e) => handleInputChange('clientName', e.target.value)}
-                    className="w-full px-4 py-4 bg-slate-800/50 border border-slate-600/50 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                    className="w-full px-4 py-4 bg-background border border-border rounded-xl text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all duration-200"
                     placeholder="John Smith"
                     required
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-semibold text-slate-300 mb-3">
+                  <label className="block text-sm font-semibold text-foreground mb-3">
                     Client Email
                   </label>
                   <input
                     type="email"
                     value={formData.clientEmail}
                     onChange={(e) => handleInputChange('clientEmail', e.target.value)}
-                    className="w-full px-4 py-4 bg-slate-800/50 border border-slate-600/50 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                    className="w-full px-4 py-4 bg-background border border-border rounded-xl text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all duration-200"
                     placeholder="john@example.com"
                   />
                 </div>
@@ -270,7 +270,7 @@ const CreateQuoteModal: React.FC<CreateQuoteModalProps> = ({
 
               {/* Quote Total */}
               <div>
-                <label className="block text-sm font-semibold text-slate-300 mb-3">
+                <label className="block text-sm font-semibold text-foreground mb-3">
                   Quote Total *
                 </label>
                 <input
@@ -279,7 +279,7 @@ const CreateQuoteModal: React.FC<CreateQuoteModalProps> = ({
                   min="0"
                   value={formData.quoteTotal}
                   onChange={(e) => handleInputChange('quoteTotal', e.target.value)}
-                  className="w-full px-4 py-4 bg-slate-800/50 border border-slate-600/50 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                  className="w-full px-4 py-4 bg-background border border-border rounded-xl text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all duration-200"
                   placeholder="0.00"
                   required
                 />
@@ -287,23 +287,23 @@ const CreateQuoteModal: React.FC<CreateQuoteModalProps> = ({
 
               {/* Description */}
               <div>
-                <label className="block text-sm font-semibold text-slate-300 mb-3">
+                <label className="block text-sm font-semibold text-foreground mb-3">
                   Description
                 </label>
                 <textarea
                   value={formData.description}
                   onChange={(e) => handleInputChange('description', e.target.value)}
-                  className="w-full px-4 py-4 bg-slate-800/50 border border-slate-600/50 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                  className="w-full px-4 py-4 bg-background border border-border rounded-xl text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all duration-200"
                   placeholder="Brief description of the work to be performed..."
                   rows={3}
                 />
               </div>
 
               {/* Action Buttons */}
-              <div className="flex gap-4 pt-6 border-t border-slate-700/50">
+              <div className="flex gap-4 pt-6 border-t border-border">
                 <Button
                   type="button"
-                  variant="ghost"
+                  variant="secondary"
                   onClick={onClose}
                   className="flex-1"
                 >

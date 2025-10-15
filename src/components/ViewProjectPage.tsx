@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useProject } from '../utils/queries';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
-import Card from './Card';
+
 import Button from './Button';
 import CreateQuoteModal from './CreateQuoteModal';
 import AssignTeamMemberModal from './AssignTeamMemberModal';
@@ -220,204 +220,192 @@ const ViewProjectPage: React.FC = () => {
   const pendingChangeOrders = kpis.pending_change_orders || 0;
   const totalBudget = kpis.total_budget || (projectData as any).total_budget || 0;
   
-  // Get status styling
-  const getStatusColor = (status: string) => {
-    switch (status.toLowerCase()) {
-      case 'planning': return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300';
-      case 'in-progress': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300';
-      case 'review': return 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300';
-      case 'completed': return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300';
-      case 'on-hold': return 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300';
-      default: return 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300';
-    }
-  };
 
-  const getPriorityColor = (priority: string) => {
-    switch (priority.toLowerCase()) {
-      case 'urgent': return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300';
-      case 'high': return 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300';
-      case 'medium': return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300';
-      case 'low': return 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300';
-      default: return 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300';
-    }
-  };
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-8">
-        <div className="flex items-center gap-4">
+      {/* Page Header */}
+      <div className="mb-8">
+        <div className="flex items-center gap-4 mb-6">
           <Button
             onClick={() => navigate('/projects')}
             variant="secondary"
+            size="sm"
             className="flex items-center gap-2"
           >
             <ArrowLeft className="w-4 h-4" />
             Back to Projects
           </Button>
-          
-          <div>
-            <div className="flex items-center gap-3 mb-2">
-              <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
-                {projectData.name}
-              </h1>
-              <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(projectData.status)}`}>
-                {projectData.status}
-              </span>
-              <span className={`px-3 py-1 rounded-full text-sm font-medium ${getPriorityColor(projectData.priority)}`}>
-                {projectData.priority} priority
-              </span>
-            </div>
-            {projectData.description && (
-              <p className="text-slate-600 dark:text-slate-400">
-                {projectData.description}
-              </p>
-            )}
-          </div>
         </div>
         
-        {/* Delete Project Button */}
-        <Button
-          variant="danger"
-          onClick={() => setShowDeleteModal(true)}
-          className="flex items-center gap-2"
-        >
-          <Trash2 className="w-4 h-4" />
-          Delete Project
-        </Button>
-      </div>
-
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
-        <Card className="p-6">
-          <div className="flex items-center justify-between">
-            <div className="flex-1">
-              <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Total Budget</p>
-              {isEditingBudget ? (
-                <div className="flex items-center gap-2 mt-1">
-                  <input
-                    type="number"
-                    value={budgetValue}
-                    onChange={(e) => setBudgetValue(e.target.value)}
-                    className="text-xl font-bold bg-transparent border-b border-slate-400 text-slate-900 dark:text-white focus:outline-none focus:border-blue-500 w-32"
-                    placeholder="0"
-                    autoFocus
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        const newBudget = parseFloat(budgetValue) || 0;
-                        updateBudgetMutation.mutate(newBudget);
-                      } else if (e.key === 'Escape') {
-                        setIsEditingBudget(false);
-                        setBudgetValue(totalBudget.toString());
-                      }
-                    }}
-                  />
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      const newBudget = parseFloat(budgetValue) || 0;
-                      updateBudgetMutation.mutate(newBudget);
-                    }}
-                    loading={updateBudgetMutation.isPending}
-                  >
-                    Save
-                  </Button>
-                </div>
-              ) : (
-                <button
-                  onClick={() => {
-                    console.log('Budget button clicked, totalBudget:', totalBudget);
-                    setIsEditingBudget(true);
-                    setBudgetValue(totalBudget.toString());
-                  }}
-                  className="text-2xl font-bold text-slate-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-left cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 px-2 py-1 rounded"
-                  title="Click to edit budget"
-                >
-                  ${totalBudget.toLocaleString()}
-                </button>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div>
+              <div className="flex items-center gap-3 mb-2">
+                <h1 className="text-3xl font-bold text-foreground">
+                  {projectData.name}
+                </h1>
+                <span className={`px-3 py-1.5 rounded-full text-sm font-medium border ${
+                  projectData.status.toLowerCase() === 'completed' 
+                    ? 'bg-success/10 text-success border-success/20' 
+                    : projectData.status.toLowerCase() === 'in-progress'
+                    ? 'bg-warning/10 text-warning border-warning/20'
+                    : projectData.status.toLowerCase() === 'planning'
+                    ? 'bg-primary/10 text-primary border-primary/20'
+                    : 'bg-muted/10 text-muted-foreground border-border'
+                }`}>
+                  {projectData.status}
+                </span>
+                <span className={`px-3 py-1.5 rounded-full text-sm font-medium border ${
+                  projectData.priority.toLowerCase() === 'urgent' 
+                    ? 'bg-destructive/10 text-destructive border-destructive/20' 
+                    : projectData.priority.toLowerCase() === 'high'
+                    ? 'bg-warning/10 text-warning border-warning/20'
+                    : projectData.priority.toLowerCase() === 'medium'
+                    ? 'bg-primary/10 text-primary border-primary/20'
+                    : 'bg-muted/10 text-muted-foreground border-border'
+                }`}>
+                  {projectData.priority} priority
+                </span>
+              </div>
+              {projectData.description && (
+                <p className="text-muted-foreground max-w-2xl">
+                  {projectData.description}
+                </p>
               )}
             </div>
-            <div className="w-12 h-12 bg-green-100 dark:bg-green-900/20 rounded-lg flex items-center justify-center">
-              <DollarSign className="w-6 h-6 text-green-600 dark:text-green-400" />
-            </div>
           </div>
-        </Card>
-
-        <Card className="p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Total Quotes</p>
-              <p className="text-2xl font-bold text-slate-900 dark:text-white">{totalQuotes}</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                Linked to this project
-              </p>
-            </div>
-            <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/20 rounded-lg flex items-center justify-center">
-              <FileText className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-            </div>
-          </div>
-        </Card>
-
-        <Card className="p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Total Proposed Value</p>
-              <p className="text-2xl font-bold text-slate-900 dark:text-white">
-                ${totalQuoteValue.toLocaleString()}
-              </p>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                Total value of linked quotes
-              </p>
-            </div>
-            <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/20 rounded-lg flex items-center justify-center">
-              <TrendingUp className="w-6 h-6 text-purple-600 dark:text-purple-400" />
-            </div>
-          </div>
-        </Card>
-
-        <Card className="p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Team Members</p>
-              <p className="text-2xl font-bold text-slate-900 dark:text-white">{members.length}</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                Active team members
-              </p>
-            </div>
-            <div className="w-12 h-12 bg-orange-100 dark:bg-orange-900/20 rounded-lg flex items-center justify-center">
-              <Users className="w-6 h-6 text-orange-600 dark:text-orange-400" />
-            </div>
-          </div>
-        </Card>
-
-        {/* Committed Budget KPI Card */}
-        <Card className="p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Committed Budget</p>
-              <p className="text-2xl font-bold text-slate-900 dark:text-white">
-                ${(kpis.committed_budget || 0).toLocaleString()}
-              </p>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                Value of approved quotes
-              </p>
-            </div>
-            <div className="w-12 h-12 bg-emerald-100 dark:bg-emerald-900/20 rounded-lg flex items-center justify-center">
-              <Target className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
-            </div>
-          </div>
-        </Card>
+          
+          <Button
+            variant="destructive"
+            onClick={() => setShowDeleteModal(true)}
+            className="flex items-center gap-2"
+          >
+            <Trash2 className="w-4 h-4" />
+            Delete Project
+          </Button>
+        </div>
       </div>
 
-      {/* Content Sections */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      {/* Project KPI Bar */}
+      <div className="bg-card border border-border rounded-lg p-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 divide-y md:divide-y-0 md:divide-x divide-border">
+          
+          {/* Total Budget KPI */}
+          <div className="p-4 first:pl-0 last:pr-0">
+            <div className="flex items-center gap-3">
+              <DollarSign className="w-5 h-5 text-muted-foreground" />
+              <div className="min-w-0">
+                <p className="text-sm text-muted-foreground">Total Budget</p>
+                {isEditingBudget ? (
+                  <div className="flex items-center gap-2 mt-1">
+                    <input
+                      type="number"
+                      value={budgetValue}
+                      onChange={(e) => setBudgetValue(e.target.value)}
+                      className="text-xl font-bold bg-transparent border-b border-input text-foreground focus:outline-none focus:border-primary w-32"
+                      placeholder="0"
+                      autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          const newBudget = parseFloat(budgetValue) || 0;
+                          updateBudgetMutation.mutate(newBudget);
+                        } else if (e.key === 'Escape') {
+                          setIsEditingBudget(false);
+                          setBudgetValue(totalBudget.toString());
+                        }
+                      }}
+                    />
+                    <Button
+                      size="xs"
+                      onClick={() => {
+                        const newBudget = parseFloat(budgetValue) || 0;
+                        updateBudgetMutation.mutate(newBudget);
+                      }}
+                      loading={updateBudgetMutation.isPending}
+                    >
+                      Save
+                    </Button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setIsEditingBudget(true);
+                      setBudgetValue(totalBudget.toString());
+                    }}
+                    className="text-2xl font-bold text-foreground hover:text-primary transition-colors text-left cursor-pointer hover:bg-muted/50 px-2 py-1 rounded"
+                    title="Click to edit budget"
+                  >
+                    ${totalBudget.toLocaleString()}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Total Quotes KPI */}
+          <div className="p-4 first:pl-0 last:pr-0">
+            <div className="flex items-center gap-3">
+              <FileText className="w-5 h-5 text-muted-foreground" />
+              <div className="min-w-0">
+                <p className="text-sm text-muted-foreground">Total Quotes</p>
+                <p className="text-2xl font-bold text-foreground">{totalQuotes}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Quote Value KPI */}
+          <div className="p-4 first:pl-0 last:pr-0">
+            <div className="flex items-center gap-3">
+              <TrendingUp className="w-5 h-5 text-muted-foreground" />
+              <div className="min-w-0">
+                <p className="text-sm text-muted-foreground">Quote Value</p>
+                <p className="text-2xl font-bold text-foreground">
+                  ${totalQuoteValue.toLocaleString()}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Team Members KPI */}
+          <div className="p-4 first:pl-0 last:pr-0">
+            <div className="flex items-center gap-3">
+              <Users className="w-5 h-5 text-muted-foreground" />
+              <div className="min-w-0">
+                <p className="text-sm text-muted-foreground">Team Members</p>
+                <p className="text-2xl font-bold text-foreground">{members.length}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Committed Budget KPI */}
+          <div className="p-4 first:pl-0 last:pr-0">
+            <div className="flex items-center gap-3">
+              <Target className="w-5 h-5 text-muted-foreground" />
+              <div className="min-w-0">
+                <p className="text-sm text-muted-foreground">Committed</p>
+                <p className="text-2xl font-bold text-foreground">
+                  ${(kpis.committed_budget || 0).toLocaleString()}
+                </p>
+              </div>
+            </div>
+          </div>
+          
+        </div>
+      </div>
+
+      {/* Project Content Sections */}
+      <div className="space-y-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Quotes Section */}
-        <Card className="p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-              <FileText className="w-5 h-5" />
-              Quotes ({totalQuotes})
-            </h3>
+        <div className="bg-card border border-border rounded-lg">
+          <div className="flex items-center justify-between p-6 border-b border-border">
+            <div className="flex items-center gap-2">
+              <FileText className="w-5 h-5 text-muted-foreground" />
+              <h3 className="text-lg font-semibold text-foreground">
+                Quotes ({totalQuotes})
+              </h3>
+            </div>
             <div className="flex gap-2">
               <Button
                 onClick={() => setShowCreateQuoteModal(true)}
@@ -436,56 +424,71 @@ const ViewProjectPage: React.FC = () => {
             </div>
           </div>
           
-          {quotes.length === 0 ? (
-            <div className="text-center py-8">
-              <FileText className="w-12 h-12 text-slate-400 mx-auto mb-4" />
-              <p className="text-slate-500 dark:text-slate-400">No quotes available</p>
-            </div>
-          ) : (
-            <div className="max-h-80 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 scrollbar-track-transparent">
-              <div className="space-y-4 pr-2">
-                {quotes.map((quote) => (
+          <div className="p-6">
+            {quotes.length === 0 ? (
+              <div className="text-center py-8">
+                <FileText className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                <p className="text-muted-foreground mb-4">No quotes available</p>
+                <Button
+                  onClick={() => setShowCreateQuoteModal(true)}
+                  variant="outline"
+                  size="sm"
+                >
+                  Create Your First Quote
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-0">
+                {quotes.map((quote, index) => (
                   <div 
                     key={quote.id} 
-                    className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-lg cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors"
+                    className={`flex items-center justify-between py-4 cursor-pointer hover:bg-muted/50 transition-colors px-3 rounded ${
+                      index !== quotes.length - 1 ? 'border-b border-border' : ''
+                    }`}
                     onClick={() => navigate(`/quotes/${quote.id}`)}
                     title="Click to view quote details"
                   >
-                    <div>
-                      <h4 className="font-medium text-slate-900 dark:text-white">{quote.quoteName}</h4>
-                      <p className="text-sm text-slate-500 dark:text-slate-400">
-                        {new Date(quote.created_at).toLocaleDateString()}
+                    <div className="min-w-0 flex-1">
+                      <h4 className="font-medium text-foreground truncate">{quote.quoteName}</h4>
+                      <p className="text-sm text-muted-foreground">
+                        Created {new Date(quote.created_at).toLocaleDateString()}
                       </p>
                     </div>
-                    <div className="text-right">
-                      <p className="font-semibold text-slate-900 dark:text-white">
-                        ${(quote.quoteTotal || 0).toLocaleString()}
-                      </p>
-                      <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(quote.status)}`}>
-                        {quote.status}
-                      </span>
+                    <div className="text-right flex items-center gap-3 ml-4">
+                      <div>
+                        <p className="font-semibold text-foreground">
+                          ${(quote.quoteTotal || 0).toLocaleString()}
+                        </p>
+                        <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium border ${
+                          quote.status.toLowerCase() === 'approved' 
+                            ? 'bg-success/10 text-success border-success/20' 
+                            : quote.status.toLowerCase() === 'pending'
+                            ? 'bg-warning/10 text-warning border-warning/20'
+                            : quote.status.toLowerCase() === 'draft'
+                            ? 'bg-muted/10 text-muted-foreground border-border'
+                            : 'bg-muted/10 text-muted-foreground border-border'
+                        }`}>
+                          {quote.status}
+                        </span>
+                      </div>
+                      <ArrowLeft className="w-4 h-4 text-muted-foreground rotate-180" />
                     </div>
                   </div>
                 ))}
               </div>
-              {quotes.length > 4 && (
-                <div className="text-center mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
-                  <p className="text-sm text-slate-500 dark:text-slate-400">
-                    Showing all {quotes.length} quotes
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-        </Card>
+            )}
+          </div>
+        </div>
 
         {/* Team Members Section */}
-        <Card className="p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-              <Users className="w-5 h-5" />
-              Team Members ({members.length})
-            </h3>
+        <div className="bg-card border border-border rounded-lg">
+          <div className="flex items-center justify-between p-6 border-b border-border">
+            <div className="flex items-center gap-2">
+              <Users className="w-5 h-5 text-muted-foreground" />
+              <h3 className="text-lg font-semibold text-foreground">
+                Team Members ({members.length})
+              </h3>
+            </div>
             {members.length > 0 && (
               <Button
                 onClick={() => setShowAssignTeamMemberModal(true)}
@@ -497,58 +500,58 @@ const ViewProjectPage: React.FC = () => {
             )}
           </div>
           
-          {members.length === 0 ? (
-            <div className="text-center py-8">
-              <Users className="w-12 h-12 text-slate-400 mx-auto mb-4" />
-              <p className="text-slate-500 dark:text-slate-400 mb-4">No team members assigned</p>
-              <Button
-                onClick={() => setShowAssignTeamMemberModal(true)}
-                variant="outline"
-                size="sm"
-              >
-                Assign Team Member
-              </Button>
-            </div>
-          ) : (
-            <div className="max-h-80 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 scrollbar-track-transparent">
-              <div className="space-y-4 pr-2">
-                {members.map((member) => (
-                  <div key={member.id} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/20 rounded-full flex items-center justify-center">
-                        <span className="text-blue-600 dark:text-blue-400 font-semibold">
+          <div className="p-6">
+            {members.length === 0 ? (
+              <div className="text-center py-8">
+                <Users className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                <p className="text-muted-foreground mb-4">No team members assigned to this project</p>
+                <Button
+                  onClick={() => setShowAssignTeamMemberModal(true)}
+                  variant="outline"
+                  size="sm"
+                >
+                  Assign Team Member
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-0">
+                {members.map((member, index) => (
+                  <div 
+                    key={member.id} 
+                    className={`flex items-center justify-between py-4 px-3 hover:bg-muted/50 transition-colors rounded ${
+                      index !== members.length - 1 ? 'border-b border-border' : ''
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <div className="w-10 h-10 bg-primary/10 border border-primary/20 rounded-full flex items-center justify-center flex-shrink-0">
+                        <span className="text-primary font-semibold">
                           {member.name?.charAt(0)?.toUpperCase() || 'U'}
                         </span>
                       </div>
-                      <div>
-                        <h4 className="font-medium text-slate-900 dark:text-white">{member.name}</h4>
-                        <p className="text-sm text-slate-500 dark:text-slate-400">{member.email}</p>
+                      <div className="min-w-0">
+                        <h4 className="font-medium text-foreground truncate">{member.name}</h4>
+                        <p className="text-sm text-muted-foreground truncate">{member.email}</p>
                       </div>
                     </div>
-                    <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900/20 text-blue-800 dark:text-blue-300 rounded-full text-xs font-medium">
+                    <span className="px-3 py-1 bg-primary/10 text-primary border border-primary/20 rounded-full text-xs font-medium ml-4 flex-shrink-0">
                       {member.role || 'Member'}
                     </span>
                   </div>
                 ))}
               </div>
-              {members.length > 4 && (
-                <div className="text-center mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
-                  <p className="text-sm text-slate-500 dark:text-slate-400">
-                    Showing all {members.length} team members
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-        </Card>
+            )}
+          </div>
+        </div>
 
         {/* Change Orders Section */}
-        <Card className="p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-              <Activity className="w-5 h-5" />
-              Recent Change Orders ({changeOrders.length})
-            </h3>
+        <div className="bg-card border border-border rounded-lg">
+          <div className="flex items-center justify-between p-6 border-b border-border">
+            <div className="flex items-center gap-2">
+              <Activity className="w-5 h-5 text-muted-foreground" />
+              <h3 className="text-lg font-semibold text-foreground">
+                Change Orders ({changeOrders.length})
+              </h3>
+            </div>
             {changeOrders.length > 0 && (
               <Button
                 onClick={() => setShowCreateChangeOrderModal(true)}
@@ -560,141 +563,143 @@ const ViewProjectPage: React.FC = () => {
             )}
           </div>
           
-          {changeOrders.length === 0 ? (
-            <div className="text-center py-8">
-              <Activity className="w-12 h-12 text-slate-400 mx-auto mb-4" />
-              <p className="text-slate-500 dark:text-slate-400 mb-4">No change orders yet</p>
-              <Button
-                onClick={() => setShowCreateChangeOrderModal(true)}
-                variant="outline"
-                size="sm"
-              >
-                Create Change Order
-              </Button>
-            </div>
-          ) : (
-            <div className="max-h-80 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 scrollbar-track-transparent">
-              <div className="space-y-4 pr-2">
-                {changeOrders.map((changeOrder) => (
+          <div className="p-6">
+            {changeOrders.length === 0 ? (
+              <div className="text-center py-8">
+                <Activity className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                <p className="text-muted-foreground mb-4">No change orders created yet</p>
+                <Button
+                  onClick={() => setShowCreateChangeOrderModal(true)}
+                  variant="outline"
+                  size="sm"
+                >
+                  Create Change Order
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-0">
+                {changeOrders.map((changeOrder, index) => (
                   <div 
                     key={changeOrder.id} 
-                    className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-lg cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors"
+                    className={`flex items-center justify-between py-4 cursor-pointer hover:bg-muted/50 transition-colors px-3 rounded ${
+                      index !== changeOrders.length - 1 ? 'border-b border-border' : ''
+                    }`}
                     onClick={() => {
-                      console.log('🔍 Change order clicked. Full object:', JSON.stringify(changeOrder, null, 2));
-                      console.log('🔍 Available properties:', Object.keys(changeOrder));
-                      console.log('🔍 quote_id:', changeOrder.quote_id);
-                      console.log('🔍 quoteId:', changeOrder.quoteId);
-                      console.log('🔍 quoteName:', changeOrder.quoteName);
-                      
                       // Try multiple possible quote ID properties
                       const quoteId = changeOrder.quote_id || changeOrder.quoteId || changeOrder.id;
                       
                       if (quoteId) {
-                        console.log('✅ Attempting navigation to quote ID:', quoteId);
-                        try {
-                          navigate(`/quotes/${quoteId}`);
-                          console.log('✅ Navigation called successfully');
-                        } catch (error) {
-                          console.error('❌ Navigation error:', error);
-                        }
+                        navigate(`/quotes/${quoteId}`);
                       } else {
-                        console.log('❌ No quote ID found. Available keys:', Object.keys(changeOrder));
                         // As fallback, navigate to quotes list
-                        console.log('🔄 Fallback: navigating to quotes list');
                         navigate('/quotes');
                       }
                     }}
                     title="Click to view associated quote"
                   >
-                    <div>
-                      <h4 className="font-medium text-slate-900 dark:text-white">{changeOrder.description}</h4>
-                      <p className="text-sm text-slate-500 dark:text-slate-400">
+                    <div className="min-w-0 flex-1">
+                      <h4 className="font-medium text-foreground truncate">{changeOrder.description}</h4>
+                      <p className="text-sm text-muted-foreground truncate">
                         Quote: {changeOrder.quoteName}
                       </p>
                     </div>
-                    <div className="text-right">
-                      <p className="font-semibold text-slate-900 dark:text-white">
-                        ${changeOrder.amount.toLocaleString()}
-                      </p>
-                      <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(changeOrder.status)}`}>
-                        {changeOrder.status}
-                      </span>
+                    <div className="text-right flex items-center gap-3 ml-4">
+                      <div>
+                        <p className="font-semibold text-foreground">
+                          ${changeOrder.amount.toLocaleString()}
+                        </p>
+                        <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium border ${
+                          changeOrder.status.toLowerCase() === 'approved' 
+                            ? 'bg-success/10 text-success border-success/20' 
+                            : changeOrder.status.toLowerCase() === 'pending'
+                            ? 'bg-warning/10 text-warning border-warning/20'
+                            : changeOrder.status.toLowerCase() === 'rejected'
+                            ? 'bg-destructive/10 text-destructive border-destructive/20'
+                            : 'bg-muted/10 text-muted-foreground border-border'
+                        }`}>
+                          {changeOrder.status}
+                        </span>
+                      </div>
+                      <ArrowLeft className="w-4 h-4 text-muted-foreground rotate-180" />
                     </div>
                   </div>
                 ))}
               </div>
-              {changeOrders.length > 4 && (
-                <div className="text-center mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
-                  <p className="text-sm text-slate-500 dark:text-slate-400">
-                    Showing all {changeOrders.length} change orders
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-        </Card>
+            )}
+          </div>
+        </div>
 
-        {/* Baseline Budget Controls */}
-        {projectData.budgetSummary && (
-          <BaselineBudgetControls
-            projectId={projectId!}
-            budgetSummary={projectData.budgetSummary}
-            onSuccess={handleToastMessage}
-          />
-        )}
 
-        {/* Budget vs Actuals Report */}
-        {projectData.budgetVsActuals && projectData.budgetSummary && (
-          <BudgetVsActualsReport
-            budgetVsActuals={projectData.budgetVsActuals}
-            budgetSummary={projectData.budgetSummary}
-          />
-        )}
-
-        {/* Actual Costs Ledger */}
-        <ActualCostProvider>
-          <ActualsLedger 
-            projectId={projectId!}
-            onSuccess={handleToastMessage}
-          />
-        </ActualCostProvider>
 
         {/* Project Summary */}
-        <Card className="p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-              <Target className="w-5 h-5" />
-              Project Summary
-            </h3>
+        <div className="bg-card border border-border rounded-lg">
+          <div className="flex items-center justify-between p-6 border-b border-border">
+            <div className="flex items-center gap-2">
+              <Target className="w-5 h-5 text-muted-foreground" />
+              <h3 className="text-lg font-semibold text-foreground">
+                Project Summary
+              </h3>
+            </div>
           </div>
           
-          <div className="space-y-4">
-            <div className="flex items-center justify-between py-2 border-b border-slate-200 dark:border-slate-700">
-              <span className="text-slate-600 dark:text-slate-400">Created</span>
-              <span className="font-medium text-slate-900 dark:text-white">
-                {new Date(projectData.created_at).toLocaleDateString()}
-              </span>
-            </div>
-            <div className="flex items-center justify-between py-2 border-b border-slate-200 dark:border-slate-700">
-              <span className="text-slate-600 dark:text-slate-400">Last Updated</span>
-              <span className="font-medium text-slate-900 dark:text-white">
-                {new Date(projectData.updated_at).toLocaleDateString()}
-              </span>
-            </div>
-            <div className="flex items-center justify-between py-2 border-b border-slate-200 dark:border-slate-700">
-              <span className="text-slate-600 dark:text-slate-400">Completed Quotes</span>
-              <span className="font-medium text-slate-900 dark:text-white">
-                {completedQuotes} / {totalQuotes}
-              </span>
-            </div>
-            <div className="flex items-center justify-between py-2">
-              <span className="text-slate-600 dark:text-slate-400">Pending Change Orders</span>
-              <span className="font-medium text-slate-900 dark:text-white">
-                {pendingChangeOrders}
-              </span>
+          <div className="p-6">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between py-3 border-b border-border">
+                <span className="text-muted-foreground">Created</span>
+                <span className="font-medium text-foreground">
+                  {new Date(projectData.created_at).toLocaleDateString()}
+                </span>
+              </div>
+              <div className="flex items-center justify-between py-3 border-b border-border">
+                <span className="text-muted-foreground">Last Updated</span>
+                <span className="font-medium text-foreground">
+                  {new Date(projectData.updated_at).toLocaleDateString()}
+                </span>
+              </div>
+              <div className="flex items-center justify-between py-3 border-b border-border">
+                <span className="text-muted-foreground">Completed Quotes</span>
+                <span className="font-medium text-foreground">
+                  {completedQuotes} / {totalQuotes}
+                </span>
+              </div>
+              <div className="flex items-center justify-between py-3">
+                <span className="text-muted-foreground">Pending Change Orders</span>
+                <span className="font-medium text-foreground">
+                  {pendingChangeOrders}
+                </span>
+              </div>
             </div>
           </div>
-        </Card>
+        </div>
+        </div>
+
+        {/* Additional Components Row */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+          {/* Baseline Budget Controls */}
+          {projectData.budgetSummary && (
+            <BaselineBudgetControls
+              projectId={projectId!}
+              budgetSummary={projectData.budgetSummary}
+              onSuccess={handleToastMessage}
+            />
+          )}
+
+          {/* Budget vs Actuals Report */}
+          {projectData.budgetVsActuals && projectData.budgetSummary && (
+            <BudgetVsActualsReport
+              budgetVsActuals={projectData.budgetVsActuals}
+              budgetSummary={projectData.budgetSummary}
+            />
+          )}
+
+          {/* Actual Costs Ledger */}
+          <ActualCostProvider>
+            <ActualsLedger 
+              projectId={projectId!}
+              onSuccess={handleToastMessage}
+            />
+          </ActualCostProvider>
+        </div>
       </div>
 
       {/* Modals */}

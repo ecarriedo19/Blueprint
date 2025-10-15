@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ChevronDown, FileText, Edit3 } from 'lucide-react';
 import Card from './Card';
 import Button from './Button';
@@ -23,6 +23,7 @@ interface QuotesPageProps {
 
 const QuotesPage = ({ currentUser }: QuotesPageProps) => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { data: quotes = [], isLoading: loading, error } = useQuotes();
   const { deleteQuote } = useQuoteMutations();
   const { showConfirmationModal } = useApp();
@@ -39,6 +40,18 @@ const QuotesPage = ({ currentUser }: QuotesPageProps) => {
   });
   
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Handle URL parameter for opening create modal
+  useEffect(() => {
+    if (searchParams.get('create') === 'true') {
+      setIsModalOpen(true);
+      // Remove the parameter from URL
+      setSearchParams(params => {
+        params.delete('create');
+        return params;
+      });
+    }
+  }, [searchParams, setSearchParams]);
 
   // Role-based permission check
   const canModifyQuotes = () => {
@@ -235,75 +248,56 @@ const QuotesPage = ({ currentUser }: QuotesPageProps) => {
     </Card>
   );
 
-  // Add status badge for new statuses
-  const getStatusBadgeClassEnhanced = (status: string) => {
-    switch (status.toLowerCase()) {
-      case 'draft':
-        return 'bg-gray-500/20 text-gray-300 border-gray-500/30';
-      case 'pending':
-        return 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30';
-      case 'approved':
-        return 'bg-green-500/20 text-green-300 border-green-500/30';
-      case 'rejected':
-        return 'bg-red-500/20 text-red-300 border-red-500/30';
-      case 'client to be review':
-        return 'bg-orange-500/20 text-orange-300 border-orange-500/30';
-      case 'working on it':
-        return 'bg-blue-500/20 text-blue-300 border-blue-500/30';
-      default:
-        return 'bg-blue-500/20 text-blue-300 border-blue-500/30';
-    }
-  };
+
 
   // Quotes Table Component
   const QuotesTable = () => (
-    <Card variant="glass">
+    <div className="bg-card border border-border rounded-lg overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
-            <tr className="border-b border-slate-700/50">
-              <th className="text-center py-4 px-4 text-sm font-semibold text-slate-300 uppercase tracking-wider w-12">
+            <tr className="bg-muted/30 border-b border-border">
+              <th className="text-center py-4 px-4 text-sm font-medium text-muted-foreground w-12">
                 <input
                   type="checkbox"
                   checked={selectedQuoteIds.length === quotes.length && quotes.length > 0}
                   onChange={(e) => handleSelectAll(e.target.checked)}
-                  className="w-4 h-4 text-blue-600 bg-slate-700 border-slate-600 rounded focus:ring-blue-500 focus:ring-2"
+                  className="w-4 h-4 text-primary bg-background border-border rounded focus:ring-2 focus:ring-primary"
                 />
               </th>
-              <th className="text-left py-4 px-4 text-sm font-semibold text-slate-300 uppercase tracking-wider">
+              <th className="text-left py-4 px-4 text-sm font-medium text-muted-foreground">
                 Quote
               </th>
-              <th className="text-left py-4 px-4 text-sm font-semibold text-slate-300 uppercase tracking-wider">
+              <th className="text-left py-4 px-4 text-sm font-medium text-muted-foreground">
                 Status
               </th>
-              <th className="text-left py-4 px-4 text-sm font-semibold text-slate-300 uppercase tracking-wider">
+              <th className="text-left py-4 px-4 text-sm font-medium text-muted-foreground">
                 Related Project
               </th>
-              <th className="text-left py-4 px-4 text-sm font-semibold text-slate-300 uppercase tracking-wider">
+              <th className="text-left py-4 px-4 text-sm font-medium text-muted-foreground">
                 Time to Develop
               </th>
-              <th className="text-right py-4 px-4 text-sm font-semibold text-slate-300 uppercase tracking-wider">
-                Percentage of Variances
+              <th className="text-right py-4 px-4 text-sm font-medium text-muted-foreground">
+                Variance %
               </th>
-              <th className="text-right py-4 px-4 text-sm font-semibold text-slate-300 uppercase tracking-wider">
+              <th className="text-right py-4 px-4 text-sm font-medium text-muted-foreground">
                 Quote Total
               </th>
-              <th className="text-right py-4 px-4 text-sm font-semibold text-slate-300 uppercase tracking-wider">
+              <th className="text-right py-4 px-4 text-sm font-medium text-muted-foreground">
                 Budget
               </th>
-              <th className="text-center py-4 px-4 text-sm font-semibold text-slate-300 uppercase tracking-wider">
+              <th className="text-center py-4 px-4 text-sm font-medium text-muted-foreground">
                 Actions
               </th>
             </tr>
           </thead>
-          <tbody>
-            {quotes.map((quote, index) => (
+          <tbody className="divide-y divide-border">
+            {quotes.map((quote) => (
               <tr
                 key={quote.id}
                 className={`
-                  group border-b border-slate-700/30 hover:bg-white/5 transition-colors duration-200
-                  ${index === quotes.length - 1 ? 'border-b-0' : ''}
-                  ${selectedQuoteIds.includes(quote.id) ? 'bg-blue-500/10' : ''}
+                  group hover:bg-muted/30 transition-colors duration-200
+                  ${selectedQuoteIds.includes(quote.id) ? 'bg-primary/5' : ''}
                 `}
               >
                 <td className="py-4 px-4 text-center" onClick={(e) => e.stopPropagation()}>
@@ -311,13 +305,13 @@ const QuotesPage = ({ currentUser }: QuotesPageProps) => {
                     type="checkbox"
                     checked={selectedQuoteIds.includes(quote.id)}
                     onChange={(e) => handleSelectQuote(quote.id, e.target.checked)}
-                    className="w-4 h-4 text-blue-600 bg-slate-700 border-slate-600 rounded focus:ring-blue-500 focus:ring-2"
+                    className="w-4 h-4 text-primary bg-background border-border rounded focus:ring-2 focus:ring-primary"
                   />
                 </td>
                 <td className="py-4 px-4 cursor-pointer" onClick={() => handleViewQuote(quote)}>
                   <div>
-                    <h4 className="text-white font-medium">{quote.quoteName}</h4>
-                    <p className="text-sm text-slate-400 mt-1">
+                    <h4 className="text-foreground font-medium hover:text-primary transition-colors">{quote.quoteName}</h4>
+                    <p className="text-sm text-muted-foreground mt-1">
                       Created {new Date(quote.created_at).toLocaleDateString()}
                     </p>
                   </div>
@@ -325,20 +319,29 @@ const QuotesPage = ({ currentUser }: QuotesPageProps) => {
                 <td className="py-4 px-4">
                   <span
                     className={`
-                      inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border
-                      ${getStatusBadgeClassEnhanced(quote.status)}
+                      inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border
+                      ${quote.status.toLowerCase() === 'approved' 
+                        ? 'bg-success/10 text-success border-success/20' 
+                        : quote.status.toLowerCase() === 'pending'
+                        ? 'bg-warning/10 text-warning border-warning/20'
+                        : quote.status.toLowerCase() === 'rejected'
+                        ? 'bg-destructive/10 text-destructive border-destructive/20'
+                        : quote.status.toLowerCase() === 'draft'
+                        ? 'bg-muted/10 text-muted-foreground border-border'
+                        : 'bg-primary/10 text-primary border-primary/20'
+                      }
                     `}
                   >
                     {quote.status}
                   </span>
                 </td>
                 <td className="py-4 px-4">
-                  <span className="text-slate-300">
+                  <span className="text-muted-foreground">
                     {(quote as any).project_name || 'N/A'}
                   </span>
                 </td>
                 <td className="py-4 px-4">
-                  <span className="text-slate-300">
+                  <span className="text-muted-foreground">
                     {quote.timeToDevelopValue > 0 && quote.timeToDevelopUnit 
                       ? `${quote.timeToDevelopValue} ${quote.timeToDevelopUnit}`
                       : quote.timeToDevelop || '—'
@@ -346,17 +349,17 @@ const QuotesPage = ({ currentUser }: QuotesPageProps) => {
                   </span>
                 </td>
                 <td className="py-4 px-4 text-right">
-                  <span className="text-slate-300">
+                  <span className="text-muted-foreground">
                     {formatPercentage(quote.variancePercentage)}
                   </span>
                 </td>
                 <td className="py-4 px-4 text-right">
-                  <span className="text-white font-semibold">
+                  <span className="text-foreground font-semibold">
                     {formatCurrency(quote.quoteTotal)}
                   </span>
                 </td>
                 <td className="py-4 px-4 text-right">
-                  <span className="text-slate-300">
+                  <span className="text-muted-foreground">
                     {formatCurrency(quote.budget)}
                   </span>
                 </td>
@@ -364,7 +367,7 @@ const QuotesPage = ({ currentUser }: QuotesPageProps) => {
                   <div className="flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                     <button
                       onClick={() => handleViewQuote(quote)}
-                      className="p-2 text-slate-400 hover:text-green-400 hover:bg-green-500/10 rounded-lg transition-colors duration-200"
+                      className="p-2 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg transition-colors duration-200"
                       title="View quote details"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -375,7 +378,7 @@ const QuotesPage = ({ currentUser }: QuotesPageProps) => {
                     {canModifyQuotes() && (
                       <button
                         onClick={() => handleEditQuote(quote)}
-                        className="p-2 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors duration-200"
+                        className="p-2 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg transition-colors duration-200"
                         title="Edit quote"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -386,7 +389,7 @@ const QuotesPage = ({ currentUser }: QuotesPageProps) => {
                     {canModifyQuotes() && (
                       <button
                         onClick={() => handleDeleteQuote(quote)}
-                        className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors duration-200"
+                        className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors duration-200"
                         title="Delete quote"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -401,7 +404,7 @@ const QuotesPage = ({ currentUser }: QuotesPageProps) => {
           </tbody>
         </table>
       </div>
-    </Card>
+    </div>
   );
 
   return (
@@ -442,8 +445,8 @@ const QuotesPage = ({ currentUser }: QuotesPageProps) => {
           {selectedQuoteIds.length > 0 && (
             <Button
               onClick={handleBulkEdit}
-              variant="secondary"
-              className="flex items-center gap-2"
+              variant="outline"
+              className="flex items-center gap-2 bg-primary/5 border-primary/20 hover:bg-primary/10"
             >
               <Edit3 className="w-4 h-4" />
               Edit Selected ({selectedQuoteIds.length})
@@ -453,35 +456,41 @@ const QuotesPage = ({ currentUser }: QuotesPageProps) => {
           <div className="relative" ref={dropdownRef}>
             <Button
               onClick={handleDropdownToggle}
+              variant="primary"
               className="shrink-0 flex items-center gap-2"
             >
-              + New Quote
+              <span className="text-lg font-medium">+</span>
+              New Quote
               <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isDropdownOpen ? 'rotate-180' : ''}`} />
             </Button>
 
             {/* Dropdown Menu */}
             {isDropdownOpen && (
-              <div className="absolute right-0 top-full mt-2 w-64 z-50 animate-fade-in">
-                <Card variant="glass" className="py-2 shadow-2xl border-white/20">
+              <div className="absolute right-0 top-full mt-2 w-72 z-50">
+                <Card variant="glass" className="py-2 shadow-xl border border-border/50">
                   <button
                     onClick={handleCreateQuote}
-                    className="w-full px-4 py-3 text-left hover:bg-white/10 transition-colors duration-200 flex items-center gap-3"
+                    className="w-full px-4 py-3 text-left hover:bg-muted/50 transition-colors duration-200 flex items-center gap-3 rounded-lg mx-2"
                   >
-                    <Edit3 className="w-5 h-5 text-blue-400" />
+                    <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
+                      <Edit3 className="w-5 h-5 text-primary" />
+                    </div>
                     <div>
-                      <div className="font-medium text-white">Create Manually</div>
-                      <div className="text-sm text-slate-400">Build a quote from scratch</div>
+                      <div className="font-medium text-foreground">Build a quote from scratch</div>
+                      <div className="text-sm text-muted-foreground">Create manually with custom details</div>
                     </div>
                   </button>
                   
                   <button
                     onClick={handleCreateFromDocument}
-                    className="w-full px-4 py-3 text-left hover:bg-white/10 transition-colors duration-200 flex items-center gap-3"
+                    className="w-full px-4 py-3 text-left hover:bg-muted/50 transition-colors duration-200 flex items-center gap-3 rounded-lg mx-2"
                   >
-                    <FileText className="w-5 h-5 text-purple-400" />
+                    <div className="w-10 h-10 bg-ai-purple/10 rounded-lg flex items-center justify-center">
+                      <FileText className="w-5 h-5 text-ai-purple" />
+                    </div>
                     <div>
-                      <div className="font-medium text-white">Create from Document (AI)</div>
-                      <div className="text-sm text-slate-400">Upload and let AI generate</div>
+                      <div className="font-medium text-foreground">Upload and let AI generate</div>
+                      <div className="text-sm text-muted-foreground">Extract quotes from documents automatically</div>
                     </div>
                   </button>
                 </Card>

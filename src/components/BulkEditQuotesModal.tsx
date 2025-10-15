@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useProjects } from '../utils/queries';
+import { modalBackdrop, modalContent } from '../utils/animations';
 import Card from './Card';
 import Button from './Button';
 import { X, Edit3 } from 'lucide-react';
@@ -106,7 +108,7 @@ const BulkEditQuotesModal: React.FC<BulkEditQuotesModalProps> = ({
     }
   };
 
-  if (!isOpen) return null;
+  // Remove the early return since we're using AnimatePresence
 
   const statusOptions = [
     { value: '', label: 'Keep current status' },
@@ -120,100 +122,118 @@ const BulkEditQuotesModal: React.FC<BulkEditQuotesModalProps> = ({
   ];
 
   return (
-    <div 
-      className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm overflow-y-auto"
-      onClick={handleOverlayClick}
-    >
-      <div className="min-h-screen flex items-center justify-center p-4 py-8">
-        <div className="w-full max-w-2xl my-8">
-          <Card variant="glass" className="relative animate-fade-in">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between mb-8">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-blue-500/10 dark:bg-blue-400/10 rounded-lg flex items-center justify-center">
-                  <Edit3 className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div 
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm overflow-y-auto"
+          onClick={handleOverlayClick}
+          variants={modalBackdrop}
+          initial="initial"
+          animate="animate"
+          exit="exit"
+        >
+          <div className="min-h-screen flex items-center justify-center p-4 py-8">
+            <motion.div 
+              className="w-full max-w-2xl my-8"
+              variants={modalContent}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+            >
+              <Card variant="glass" className="relative">
+                {/* Modal Header */}
+                <div className="flex items-center justify-between mb-8">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center">
+                      <Edit3 className="w-6 h-6 text-primary" />
+                    </div>
+                    <div>
+                      <h2 className="text-2xl font-bold text-foreground mb-1">
+                        Editing {selectedQuoteIds.length} selected quotes
+                      </h2>
+                      <p className="text-muted-foreground">
+                        Update multiple quotes at once
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={onClose}
+                    className="text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="w-5 h-5" />
+                  </Button>
                 </div>
-                <div>
-                  <h2 className="text-2xl font-bold text-white mb-2">
-                    Bulk Edit Quotes
-                  </h2>
-                  <p className="text-slate-400">
-                    Editing {selectedQuoteIds.length} selected quote{selectedQuoteIds.length !== 1 ? 's' : ''}
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={onClose}
-                className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
 
-            {/* Form */}
-            <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Project Assignment */}
-              <div>
-                <label className="block text-sm font-semibold text-slate-300 mb-3">
-                  Related Project
-                </label>
-                <select
-                  value={formData.project_id}
-                  onChange={(e) => handleInputChange('project_id', e.target.value)}
-                  className="w-full px-4 py-4 bg-slate-800/50 border border-slate-600/50 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                >
-                  <option value="">Keep current project</option>
-                  <option value="null">No Project (Standalone Quote)</option>
-                  {projects.map((project) => (
-                    <option key={project.id} value={project.id}>
-                      {project.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+                {/* Form */}
+                <form onSubmit={handleSubmit} className="space-y-6">
+                  {/* Project Assignment */}
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-3">
+                      Related Project
+                    </label>
+                    <select
+                      value={formData.project_id}
+                      onChange={(e) => handleInputChange('project_id', e.target.value)}
+                      className="w-full px-4 py-3 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all duration-200"
+                    >
+                      <option value="">Keep current project</option>
+                      <option value="null">No Project (Standalone Quote)</option>
+                      {projects.map((project) => (
+                        <option key={project.id} value={project.id}>
+                          {project.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-              {/* Status */}
-              <div>
-                <label className="block text-sm font-semibold text-slate-300 mb-3">
-                  Status
-                </label>
-                <select
-                  value={formData.status}
-                  onChange={(e) => handleInputChange('status', e.target.value)}
-                  className="w-full px-4 py-4 bg-slate-800/50 border border-slate-600/50 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                >
-                  {statusOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+                  {/* Status */}
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-3">
+                      Status
+                    </label>
+                    <select
+                      value={formData.status}
+                      onChange={(e) => handleInputChange('status', e.target.value)}
+                      className="w-full px-4 py-3 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all duration-200"
+                    >
+                      {statusOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-              {/* Action Buttons */}
-              <div className="flex gap-4 pt-6 border-t border-slate-700/50">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={onClose}
-                  className="flex-1"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  variant="primary"
-                  loading={bulkUpdateMutation.isPending}
-                  className="flex-1"
-                >
-                  {bulkUpdateMutation.isPending ? 'Updating...' : `Update ${selectedQuoteIds.length} Quote${selectedQuoteIds.length !== 1 ? 's' : ''}`}
-                </Button>
-              </div>
-            </form>
-          </Card>
-        </div>
-      </div>
-    </div>
+                  {/* Action Buttons */}
+                  <div className="flex gap-4 pt-6 border-t border-border">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={onClose}
+                      className="flex-1"
+                      disabled={bulkUpdateMutation.isPending}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      variant="primary"
+                      loading={bulkUpdateMutation.isPending}
+                      className="flex-1"
+                    >
+                      <Edit3 className="w-4 h-4" />
+                      {bulkUpdateMutation.isPending ? 'Updating...' : `Update ${selectedQuoteIds.length} Quote${selectedQuoteIds.length !== 1 ? 's' : ''}`}
+                    </Button>
+                  </div>
+                </form>
+              </Card>
+            </motion.div>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 };
 

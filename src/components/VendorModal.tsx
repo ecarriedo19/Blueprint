@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import Button from './Button';
-import Card from './Card';
 import { useVendors, Vendor } from '../contexts/VendorContext';
 
 interface VendorModalProps {
@@ -132,15 +131,15 @@ const VendorModal: React.FC<VendorModalProps> = ({ isOpen, onClose, onSuccess, v
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-      <Card variant="glass" className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+      <div className="bg-card border border-border rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="p-8">
           {/* Header */}
           <div className="flex items-center justify-between mb-8">
             <div>
-              <h2 className="text-3xl font-bold text-white mb-2">
+              <h2 className="text-3xl font-bold text-foreground mb-2">
                 {vendorToEdit ? 'Edit Vendor' : 'Add New Vendor'}
               </h2>
-              <p className="text-slate-400">
+              <p className="text-muted-foreground">
                 {vendorToEdit 
                   ? 'Update vendor information and contact details.' 
                   : 'Add a new vendor or subcontractor to your directory.'
@@ -149,7 +148,7 @@ const VendorModal: React.FC<VendorModalProps> = ({ isOpen, onClose, onSuccess, v
             </div>
             <button
               onClick={onClose}
-              className="text-slate-400 hover:text-white transition-colors duration-200 p-2 hover:bg-white/10 rounded-lg"
+              className="text-muted-foreground hover:text-foreground transition-colors duration-200 p-2 hover:bg-accent rounded-lg"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -161,16 +160,16 @@ const VendorModal: React.FC<VendorModalProps> = ({ isOpen, onClose, onSuccess, v
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Vendor Name - Required */}
             <div>
-              <label className="block text-sm font-semibold text-slate-300 mb-3">
+              <label className="block text-sm font-semibold text-foreground mb-3">
                 Vendor Name *
               </label>
               <input
                 type="text"
                 value={formData.name}
                 onChange={(e) => handleInputChange('name', e.target.value)}
-                className={`w-full px-4 py-4 bg-slate-800/50 border ${
-                  errors.name ? 'border-red-500' : 'border-slate-600/50'
-                } rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200`}
+                className={`w-full px-4 py-4 bg-background border ${
+                  errors.name ? 'border-red-500' : 'border-border'
+                } rounded-xl text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all duration-200`}
                 placeholder="e.g., ABC Plumbing Services"
                 required
               />
@@ -183,13 +182,13 @@ const VendorModal: React.FC<VendorModalProps> = ({ isOpen, onClose, onSuccess, v
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Specialty */}
               <div>
-                <label className="block text-sm font-semibold text-slate-300 mb-3">
+                <label className="block text-sm font-semibold text-foreground mb-3">
                   Specialty
                 </label>
                 <select
                   value={formData.specialty}
                   onChange={(e) => handleInputChange('specialty', e.target.value)}
-                  className="w-full px-4 py-4 bg-slate-800/50 border border-slate-600/50 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                  className="w-full px-4 py-4 bg-background border border-border rounded-xl text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all duration-200"
                 >
                   <option value="">Select specialty...</option>
                   <option value="General Contractor">General Contractor</option>
@@ -212,15 +211,15 @@ const VendorModal: React.FC<VendorModalProps> = ({ isOpen, onClose, onSuccess, v
 
               {/* Rating */}
               <div>
-                <label className="block text-sm font-semibold text-slate-300 mb-3">
+                <label className="block text-sm font-semibold text-foreground mb-3">
                   Rating (1-5)
                 </label>
                 <select
                   value={formData.rating}
                   onChange={(e) => handleInputChange('rating', e.target.value)}
-                  className={`w-full px-4 py-4 bg-slate-800/50 border ${
-                    errors.rating ? 'border-red-500' : 'border-slate-600/50'
-                  } rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200`}
+                  className={`w-full px-4 py-4 bg-background border ${
+                    errors.rating ? 'border-red-500' : 'border-border'
+                  } rounded-xl text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all duration-200`}
                 >
                   <option value="">No rating</option>
                   <option value="1">⭐ 1 - Poor</option>
@@ -239,16 +238,16 @@ const VendorModal: React.FC<VendorModalProps> = ({ isOpen, onClose, onSuccess, v
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Email */}
               <div>
-                <label className="block text-sm font-semibold text-slate-300 mb-3">
+                <label className="block text-sm font-semibold text-foreground mb-3">
                   Contact Email
                 </label>
                 <input
                   type="email"
                   value={formData.contactEmail}
                   onChange={(e) => handleInputChange('contactEmail', e.target.value)}
-                  className={`w-full px-4 py-4 bg-slate-800/50 border ${
-                    errors.contactEmail ? 'border-red-500' : 'border-slate-600/50'
-                  } rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200`}
+                  className={`w-full px-4 py-4 bg-background border ${
+                    errors.contactEmail ? 'border-red-500' : 'border-border'
+                  } rounded-xl text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all duration-200`}
                   placeholder="contact@vendor.com"
                 />
                 {errors.contactEmail && (
@@ -258,16 +257,16 @@ const VendorModal: React.FC<VendorModalProps> = ({ isOpen, onClose, onSuccess, v
 
               {/* Phone */}
               <div>
-                <label className="block text-sm font-semibold text-slate-300 mb-3">
+                <label className="block text-sm font-semibold text-foreground mb-3">
                   Phone Number
                 </label>
                 <input
                   type="tel"
                   value={formData.phone}
                   onChange={(e) => handleInputChange('phone', e.target.value)}
-                  className={`w-full px-4 py-4 bg-slate-800/50 border ${
-                    errors.phone ? 'border-red-500' : 'border-slate-600/50'
-                  } rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200`}
+                  className={`w-full px-4 py-4 bg-background border ${
+                    errors.phone ? 'border-red-500' : 'border-border'
+                  } rounded-xl text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all duration-200`}
                   placeholder="(555) 123-4567"
                 />
                 {errors.phone && (
@@ -277,7 +276,7 @@ const VendorModal: React.FC<VendorModalProps> = ({ isOpen, onClose, onSuccess, v
             </div>
 
             {/* Form Actions */}
-            <div className="flex items-center justify-end gap-4 pt-6 border-t border-slate-700/50">
+            <div className="flex items-center justify-end gap-4 pt-6 border-t border-border">
               <Button 
                 type="button"
                 variant="ghost" 
@@ -297,7 +296,7 @@ const VendorModal: React.FC<VendorModalProps> = ({ isOpen, onClose, onSuccess, v
             </div>
           </form>
         </div>
-      </Card>
+      </div>
     </div>
   );
 };

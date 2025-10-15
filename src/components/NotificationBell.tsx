@@ -75,8 +75,8 @@ const NotificationBell: React.FC<NotificationBellProps> = ({
         className={`
           relative p-2 rounded-lg transition-colors duration-200
           ${isOpen 
-            ? 'bg-indigo-100/20 dark:bg-indigo-100/10' 
-            : 'hover:bg-gray-100/50 dark:hover:bg-indigo-50/10'
+            ? 'bg-primary/10' 
+            : 'hover:bg-muted'
           }
         `}
       >
@@ -84,15 +84,15 @@ const NotificationBell: React.FC<NotificationBellProps> = ({
           size={20} 
           className={`
             ${unreadCount > 0 
-              ? 'text-indigo-600 dark:text-indigo-400' 
-              : 'text-gray-500 dark:text-gray-400'
+              ? 'text-primary' 
+              : 'text-muted-foreground'
             }
           `}
         />
         
         {/* Unread Count Badge */}
         {unreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-medium">
+          <span className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground text-xs rounded-full h-5 w-5 flex items-center justify-center font-medium">
             {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         )}
@@ -102,7 +102,7 @@ const NotificationBell: React.FC<NotificationBellProps> = ({
       {isOpen && createPortal(
         <div 
           ref={dropdownRef}
-          className="fixed w-80 bg-white dark:bg-slate-800 rounded-lg shadow-2xl border border-gray-200/50 dark:border-white/10 backdrop-blur-xl z-[9999]"
+          className="fixed w-80 bg-card rounded-lg shadow-2xl border border-border backdrop-blur-xl z-[9999]"
           style={{ 
             top: '3.5rem',
             right: '1rem',
@@ -111,14 +111,14 @@ const NotificationBell: React.FC<NotificationBellProps> = ({
           }}
         >
           {/* Header */}
-          <div className="flex items-center justify-between p-4 border-b border-gray-200/50 dark:border-white/10">
-            <h3 className="font-semibold text-gray-800 dark:text-white">
+          <div className="flex items-center justify-between p-4 border-b border-border">
+            <h3 className="font-semibold text-foreground">
               Notifications
             </h3>
             {unreadCount > 0 && (
               <button
                 onClick={onMarkAllAsRead}
-                className="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors"
+                className="text-sm text-primary hover:text-primary/80 transition-colors"
               >
                 Mark all read
               </button>
@@ -128,7 +128,7 @@ const NotificationBell: React.FC<NotificationBellProps> = ({
           {/* Notifications List */}
           <div className="max-h-96 overflow-y-auto">
             {notifications.length === 0 ? (
-              <div className="p-4 text-center text-gray-500 dark:text-gray-400">
+              <div className="p-4 text-center text-muted-foreground">
                 No notifications yet
               </div>
             ) : (
@@ -136,10 +136,10 @@ const NotificationBell: React.FC<NotificationBellProps> = ({
                 <div
                   key={notification.id}
                   className={`
-                    relative p-4 border-b border-gray-200/30 dark:border-white/5 last:border-b-0
+                    relative p-4 border-b border-border last:border-b-0
                     ${!notification.isRead 
-                      ? 'bg-indigo-50/50 dark:bg-indigo-900/20' 
-                      : 'hover:bg-gray-50/50 dark:hover:bg-white/5'
+                      ? 'bg-primary/5' 
+                      : 'hover:bg-muted/50'
                     }
                     transition-colors duration-200
                   `}
@@ -149,13 +149,13 @@ const NotificationBell: React.FC<NotificationBellProps> = ({
                       <p className={`
                         text-sm leading-relaxed
                         ${!notification.isRead 
-                          ? 'text-gray-900 dark:text-white font-medium' 
-                          : 'text-gray-600 dark:text-gray-300'
+                          ? 'text-foreground font-medium' 
+                          : 'text-muted-foreground'
                         }
                       `}>
                         {notification.message}
                       </p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      <p className="text-xs text-muted-foreground mt-1">
                         {formatTimeAgo(notification.createdAt)}
                       </p>
                     </div>
@@ -164,17 +164,17 @@ const NotificationBell: React.FC<NotificationBellProps> = ({
                     {!notification.isRead && (
                       <button
                         onClick={(e) => handleMarkAsRead(notification.id, e)}
-                        className="flex-shrink-0 p-1 rounded-full hover:bg-indigo-100 dark:hover:bg-indigo-800/50 transition-colors"
+                        className="flex-shrink-0 p-1 rounded-full hover:bg-primary/10 transition-colors"
                         title="Mark as read"
                       >
-                        <Check size={14} className="text-indigo-600 dark:text-indigo-400" />
+                        <Check size={14} className="text-primary" />
                       </button>
                     )}
                   </div>
                   
                   {/* Unread Indicator */}
                   {!notification.isRead && (
-                    <div className="absolute left-2 top-1/2 transform -translate-y-1/2 w-2 h-2 bg-indigo-600 rounded-full"></div>
+                    <div className="absolute left-2 top-1/2 transform -translate-y-1/2 w-2 h-2 bg-primary rounded-full"></div>
                   )}
                 </div>
               ))
@@ -183,10 +183,10 @@ const NotificationBell: React.FC<NotificationBellProps> = ({
 
           {/* Footer */}
           {notifications.length > 0 && (
-            <div className="p-3 border-t border-gray-200/50 dark:border-white/10">
+            <div className="p-3 border-t border-border">
               <button
                 onClick={() => setIsOpen(false)}
-                className="w-full text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+                className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors"
               >
                 Close
               </button>

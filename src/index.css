@@ -3,48 +3,60 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    --radius: 0.5rem;
+  }
+  
   html {
     transition: background-color 0.3s ease, color 0.3s ease;
   }
   
   body {
-    @apply bg-gray-50 dark:bg-slate-900 text-gray-900 dark:text-gray-100;
+    @apply bg-background text-foreground;
     transition: background-color 0.3s ease, color 0.3s ease;
   }
 
-  /* Scrollbar styles for better dark mode experience */
+  /* Professional scrollbar styling for light theme by default */
   ::-webkit-scrollbar {
-    @apply w-3;
+    width: 8px;
   }
 
   ::-webkit-scrollbar-track {
-    @apply bg-gray-100 dark:bg-slate-800;
+    background: #f1f5f9;
+    border-radius: 4px;
   }
 
   ::-webkit-scrollbar-thumb {
-    @apply bg-gray-300 dark:bg-slate-600 rounded-full;
+    background: #94a3b8;
+    border-radius: 4px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-gray-400 dark:bg-slate-500;
+    background: #64748b;
+  }
+
+  /* Firefox scrollbar styling */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #94a3b8 #f1f5f9;
+  }
+
+  /* Dark mode scrollbar overrides */
+  html.dark ::-webkit-scrollbar-track {
+    background: #1e293b;
+  }
+
+  html.dark ::-webkit-scrollbar-thumb {
+    background: #475569;
+  }
+
+  html.dark ::-webkit-scrollbar-thumb:hover {
+    background: #64748b;
+  }
+
+  html.dark * {
+    scrollbar-color: #475569 #1e293b;
   }
 }
 
-@layer utilities {
-  /* Custom thin scrollbar utilities */
-  .scrollbar-thin::-webkit-scrollbar {
-    @apply w-2;
-  }
 
-  .scrollbar-thumb-slate-300::-webkit-scrollbar-thumb {
-    @apply bg-slate-300;
-  }
-
-  .scrollbar-thumb-slate-600::-webkit-scrollbar-thumb {
-    @apply bg-slate-600;
-  }
-
-  .scrollbar-track-transparent::-webkit-scrollbar-track {
-    @apply bg-transparent;
-  }
-}

@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useProject } from '../utils/queries';
-import Card from './Card';
 import Button from './Button';
 import { X, Users, UserPlus, UserMinus } from 'lucide-react';
 
@@ -181,25 +180,25 @@ const AssignTeamMemberModal: React.FC<AssignTeamMemberModalProps> = ({
     >
       <div className="min-h-screen flex items-center justify-center p-4 py-8">
         <div className="w-full max-w-4xl my-8">
-          <Card variant="glass" className="relative animate-fade-in">
+          <div className="bg-card border border-border rounded-lg p-6 relative animate-fade-in">
             {/* Modal Header */}
             <div className="flex items-center justify-between mb-8">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-blue-500/10 dark:bg-blue-400/10 rounded-lg flex items-center justify-center">
-                  <Users className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                <div className="w-10 h-10 bg-blue-500/10 rounded-lg flex items-center justify-center">
+                  <Users className="w-5 h-5 text-blue-600" />
                 </div>
                 <div>
-                  <h2 className="text-2xl font-bold text-white mb-2">
+                  <h2 className="text-2xl font-bold text-foreground mb-2">
                     Assign Team Member
                   </h2>
-                  <p className="text-slate-400">
+                  <p className="text-muted-foreground">
                     Add team members to collaborate on this project
                   </p>
                 </div>
               </div>
               <button
                 onClick={onClose}
-                className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                className="p-2 text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg transition-colors"
               >
                 <X className="w-6 h-6" />
               </button>
@@ -209,78 +208,66 @@ const AssignTeamMemberModal: React.FC<AssignTeamMemberModalProps> = ({
             <div className="max-h-96 overflow-y-auto">
               {loading ? (
                 <div className="flex items-center justify-center py-12">
-                  <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                  <span className="ml-3 text-slate-300">Loading users...</span>
+                  <div className="w-6 h-6 border-2 border-muted-foreground/30 border-t-foreground rounded-full animate-spin"></div>
+                  <span className="ml-3 text-muted-foreground">Loading users...</span>
                 </div>
               ) : error ? (
                 <div className="text-center py-12">
-                  <div className="w-16 h-16 bg-red-100 dark:bg-red-900/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <X className="w-8 h-8 text-red-600 dark:text-red-400" />
+                  <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <X className="w-8 h-8 text-red-600" />
                   </div>
-                  <h3 className="text-lg font-medium text-white mb-2">Error Loading Users</h3>
-                  <p className="text-slate-400 mb-6">{error}</p>
+                  <h3 className="text-lg font-medium text-foreground mb-2">Error Loading Users</h3>
+                  <p className="text-muted-foreground mb-6">{error}</p>
                   <Button onClick={fetchUsers} variant="primary">
                     Try Again
                   </Button>
                 </div>
               ) : users.length === 0 ? (
                 <div className="text-center py-12">
-                  <Users className="w-16 h-16 text-slate-400 mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-white mb-2">No Users Available</h3>
-                  <p className="text-slate-400">There are no users available to assign to this project.</p>
+                  <Users className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-foreground mb-2">No Users Available</h3>
+                  <p className="text-muted-foreground">There are no users available to assign to this project.</p>
                 </div>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-0 border-t border-border">
                   {users.map((user) => {
                     const assigned = isUserAssigned(user.id);
                     return (
                       <div 
                         key={user.id} 
-                        className={`flex items-center justify-between p-4 rounded-lg border transition-colors ${
-                          assigned 
-                            ? 'bg-green-900/20 border-green-700/50 hover:bg-green-900/30' 
-                            : 'bg-slate-800/30 border-slate-700/50 hover:bg-slate-800/50'
-                        }`}
+                        className="flex items-center justify-between p-4 border-b border-border hover:bg-accent/50 transition-colors"
                       >
                         <div className="flex items-center gap-3">
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                            assigned 
-                              ? 'bg-green-500/20' 
-                              : 'bg-blue-500/20'
-                          }`}>
-                            <span className={`font-semibold ${
-                              assigned 
-                                ? 'text-green-400' 
-                                : 'text-blue-400'
-                            }`}>
+                          <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
+                            <span className="font-semibold text-muted-foreground">
                               {user.name?.charAt(0)?.toUpperCase() || 'U'}
                             </span>
                           </div>
                           <div>
-                            <h4 className="text-white font-medium">{user.name}</h4>
-                            <p className="text-sm text-slate-400">{user.email}</p>
-                            <div className="flex items-center gap-2 mt-1">
-                              {user.role && (
-                                <span className="inline-block px-2 py-1 text-xs bg-slate-600/50 text-slate-300 rounded">
-                                  {user.role}
-                                </span>
-                              )}
+                            <div className="flex items-center gap-2">
+                              <h4 className="font-medium text-foreground">{user.name}</h4>
                               {assigned && (
-                                <span className="inline-block px-2 py-1 text-xs bg-green-600/50 text-green-300 rounded">
+                                <span className="inline-block px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded-full">
                                   Assigned
                                 </span>
                               )}
                             </div>
+                            <p className="text-sm text-muted-foreground">{user.email}</p>
+                            {user.role && (
+                              <span className="inline-block px-2 py-0.5 text-xs bg-muted text-muted-foreground rounded-full mt-1">
+                                {user.role}
+                              </span>
+                            )}
                           </div>
                         </div>
                         {assigned ? (
                           <Button
                             onClick={() => handleRemoveUser(user)}
-                            variant="outline"
+                            variant="destructive"
                             size="sm"
                             loading={removeMemberMutation.isPending}
                             disabled={removeMemberMutation.isPending}
-                            className="flex items-center gap-2 border-red-600/50 text-red-400 hover:bg-red-600/10"
+                            className="flex items-center gap-2"
                           >
                             <UserMinus className="w-4 h-4" />
                             Remove
@@ -306,7 +293,7 @@ const AssignTeamMemberModal: React.FC<AssignTeamMemberModalProps> = ({
             </div>
 
             {/* Footer */}
-            <div className="flex justify-end pt-6 mt-6 border-t border-slate-700/50">
+            <div className="flex justify-end pt-6 mt-6 border-t border-border">
               <Button
                 onClick={onClose}
                 variant="ghost"
@@ -314,7 +301,7 @@ const AssignTeamMemberModal: React.FC<AssignTeamMemberModalProps> = ({
                 Close
               </Button>
             </div>
-          </Card>
+          </div>
         </div>
       </div>
     </div>

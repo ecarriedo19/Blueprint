@@ -10,7 +10,6 @@ import {
   Tooltip, 
   ResponsiveContainer
 } from 'recharts';
-import Card from './Card';
 import Button from './Button';
 import Toast from './Toast';
 import { 
@@ -109,7 +108,6 @@ const ReportsPage: React.FC = () => {
 
       if (result.success) {
         setReportData(result.data);
-        showToast(`${REPORT_TABS.find(tab => tab.id === reportType)?.name} report loaded successfully!`);
       } else {
         throw new Error(result.error || 'Failed to fetch report data');
       }
@@ -153,14 +151,14 @@ const ReportsPage: React.FC = () => {
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       return (
-        <Card variant="glass" className="p-4 border border-white/20">
-          <p className="text-white font-medium mb-2">{label}</p>
+        <div className="bg-card border border-border rounded-lg p-4 shadow-lg">
+          <p className="text-foreground font-medium mb-2">{label}</p>
           {payload.map((entry: any, index: number) => (
             <p key={index} className="text-sm" style={{ color: entry.color }}>
               {entry.name}: {typeof entry.value === 'number' ? formatCurrency(entry.value) : entry.value}
             </p>
           ))}
-        </Card>
+        </div>
       );
     }
     return null;
@@ -170,13 +168,13 @@ const ReportsPage: React.FC = () => {
   const renderProfitabilityReport = () => {
     if (!reportData || !Array.isArray(reportData) || reportData.length === 0) {
       return (
-        <Card variant="glass" className="p-8 text-center">
-          <TrendingUp className="w-16 h-16 mx-auto mb-4 text-slate-400" />
-          <h3 className="text-xl font-semibold text-white mb-2">No Profitability Data</h3>
-          <p className="text-slate-400">
-            No completed quotes found for the last 4 quarters. Start adding approved quotes to see profitability trends.
+        <div className="bg-card border border-border rounded-lg p-8 text-center">
+          <TrendingUp className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
+          <h3 className="text-xl font-semibold text-foreground mb-2">No Profitability Data</h3>
+          <p className="text-muted-foreground">
+            No profitability data found. Create quotes and mark them as completed to see quarterly performance.
           </p>
-        </Card>
+        </div>
       );
     }
 
@@ -188,56 +186,58 @@ const ReportsPage: React.FC = () => {
 
     return (
       <div className="space-y-6">
-        {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card variant="glass" className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-slate-400 text-sm">Total Revenue (4Q)</p>
-                <p className="text-3xl font-bold text-white">{formatCurrency(totalRevenue)}</p>
+        {/* KPI Row */}
+        <div className="bg-card border border-border rounded-lg p-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-success/10 text-success rounded-lg">
+                <DollarSign className="w-6 h-6" />
               </div>
-              <DollarSign className="w-8 h-8 text-green-400" />
-            </div>
-          </Card>
-          
-          <Card variant="glass" className="p-6">
-            <div className="flex items-center justify-between">
               <div>
-                <p className="text-slate-400 text-sm">Total Costs (4Q)</p>
-                <p className="text-3xl font-bold text-white">{formatCurrency(totalCosts)}</p>
+                <p className="text-sm text-muted-foreground">Total Revenue (4Q)</p>
+                <p className="text-2xl font-bold text-foreground">{formatCurrency(totalRevenue)}</p>
               </div>
-              <TrendingDown className="w-8 h-8 text-red-400" />
             </div>
-          </Card>
-          
-          <Card variant="glass" className="p-6">
-            <div className="flex items-center justify-between">
+            
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-destructive/10 text-destructive rounded-lg">
+                <TrendingDown className="w-6 h-6" />
+              </div>
               <div>
-                <p className="text-slate-400 text-sm">Avg Profit Margin</p>
-                <p className={`text-3xl font-bold ${avgProfitMargin >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                <p className="text-sm text-muted-foreground">Total Costs (4Q)</p>
+                <p className="text-2xl font-bold text-foreground">{formatCurrency(totalCosts)}</p>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-4">
+              <div className={`p-3 rounded-lg ${avgProfitMargin >= 0 ? 'bg-success/10 text-success' : 'bg-destructive/10 text-destructive'}`}>
+                <TrendingUp className="w-6 h-6" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Avg Profit Margin</p>
+                <p className={`text-2xl font-bold ${avgProfitMargin >= 0 ? 'text-success' : 'text-destructive'}`}>
                   {formatPercentage(avgProfitMargin)}
                 </p>
               </div>
-              <TrendingUp className={`w-8 h-8 ${avgProfitMargin >= 0 ? 'text-green-400' : 'text-red-400'}`} />
             </div>
-          </Card>
+          </div>
         </div>
 
-        {/* Chart */}
-        <Card variant="glass" className="p-6">
-          <h3 className="text-xl font-bold text-white mb-6">Quarterly Performance</h3>
+        {/* Chart Section */}
+        <div className="bg-card border border-border rounded-lg p-6">
+          <h3 className="text-xl font-bold text-foreground mb-6">Quarterly Performance</h3>
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={reportData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(214.3 31.8% 91.4%)" />
                 <XAxis 
                   dataKey="period" 
-                  tick={{ fill: '#9CA3AF' }}
-                  stroke="#6B7280"
+                  tick={{ fill: 'hsl(215.4 16.3% 46.9%)' }}
+                  stroke="hsl(214.3 31.8% 91.4%)"
                 />
                 <YAxis 
-                  tick={{ fill: '#9CA3AF' }}
-                  stroke="#6B7280"
+                  tick={{ fill: 'hsl(215.4 16.3% 46.9%)' }}
+                  stroke="hsl(214.3 31.8% 91.4%)"
                   tickFormatter={(value) => `$${(value / 1000).toFixed(0)}K`}
                 />
                 <Tooltip content={CustomTooltip} />
@@ -262,7 +262,7 @@ const ReportsPage: React.FC = () => {
               </BarChart>
             </ResponsiveContainer>
           </div>
-        </Card>
+        </div>
       </div>
     );
   };
@@ -271,13 +271,13 @@ const ReportsPage: React.FC = () => {
   const renderBudgetVsActualsReport = () => {
     if (!reportData || !Array.isArray(reportData) || reportData.length === 0) {
       return (
-        <Card variant="glass" className="p-8 text-center">
-          <BarChart3 className="w-16 h-16 mx-auto mb-4 text-slate-400" />
-          <h3 className="text-xl font-semibold text-white mb-2">No Budget Data</h3>
-          <p className="text-slate-400">
+        <div className="bg-card border border-border rounded-lg p-8 text-center">
+          <BarChart3 className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
+          <h3 className="text-xl font-semibold text-foreground mb-2">No Budget Data</h3>
+          <p className="text-muted-foreground">
             No projects with budgets found. Create projects and quotes to track budget vs actual performance.
           </p>
-        </Card>
+        </div>
       );
     }
 
@@ -288,102 +288,104 @@ const ReportsPage: React.FC = () => {
 
     return (
       <div className="space-y-6">
-        {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <Card variant="glass" className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-slate-400 text-sm">Total Projects</p>
-                <p className="text-3xl font-bold text-white">{reportData.length}</p>
+        {/* KPI Row */}
+        <div className="bg-card border border-border rounded-lg p-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-primary/10 text-primary rounded-lg">
+                <BarChart3 className="w-6 h-6" />
               </div>
-              <BarChart3 className="w-8 h-8 text-blue-400" />
-            </div>
-          </Card>
-          
-          <Card variant="glass" className="p-6">
-            <div className="flex items-center justify-between">
               <div>
-                <p className="text-slate-400 text-sm">Over Budget</p>
-                <p className="text-3xl font-bold text-red-400">{overBudgetProjects}</p>
+                <p className="text-sm text-muted-foreground">Total Projects</p>
+                <p className="text-2xl font-bold text-foreground">{reportData.length}</p>
               </div>
-              <AlertTriangle className="w-8 h-8 text-red-400" />
             </div>
-          </Card>
-          
-          <Card variant="glass" className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-slate-400 text-sm">Total Budget</p>
-                <p className="text-3xl font-bold text-white">{formatCurrency(totalBudget)}</p>
+            
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-destructive/10 text-destructive rounded-lg">
+                <AlertTriangle className="w-6 h-6" />
               </div>
-              <DollarSign className="w-8 h-8 text-green-400" />
-            </div>
-          </Card>
-          
-          <Card variant="glass" className="p-6">
-            <div className="flex items-center justify-between">
               <div>
-                <p className="text-slate-400 text-sm">Overall Variance</p>
-                <p className={`text-3xl font-bold ${overallVariance >= 0 ? 'text-red-400' : 'text-green-400'}`}>
+                <p className="text-sm text-muted-foreground">Over Budget</p>
+                <p className="text-2xl font-bold text-destructive">{overBudgetProjects}</p>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-primary/10 text-primary rounded-lg">
+                <DollarSign className="w-6 h-6" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Total Budget</p>
+                <p className="text-2xl font-bold text-foreground">{formatCurrency(totalBudget)}</p>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-4">
+              <div className={`p-3 rounded-lg ${overallVariance >= 0 ? 'bg-destructive/10 text-destructive' : 'bg-success/10 text-success'}`}>
+                {overallVariance >= 0 ? 
+                  <TrendingUp className="w-6 h-6" /> : 
+                  <TrendingDown className="w-6 h-6" />
+                }
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Overall Variance</p>
+                <p className={`text-2xl font-bold ${overallVariance >= 0 ? 'text-destructive' : 'text-success'}`}>
                   {formatPercentage(overallVariance)}
                 </p>
               </div>
-              {overallVariance >= 0 ? 
-                <TrendingUp className="w-8 h-8 text-red-400" /> : 
-                <TrendingDown className="w-8 h-8 text-green-400" />
-              }
             </div>
-          </Card>
+          </div>
         </div>
 
         {/* Projects Table */}
-        <Card variant="glass" className="overflow-hidden">
-          <div className="p-6 border-b border-slate-700/50">
-            <h3 className="text-xl font-bold text-white">Project Budget Analysis</h3>
+        <div className="bg-card border border-border rounded-lg overflow-hidden">
+          <div className="p-6 border-b border-border">
+            <h3 className="text-xl font-bold text-foreground">Project Budget Analysis</h3>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-slate-800/50">
-                <tr className="border-b border-slate-700/50">
-                  <th className="text-left py-4 px-6 text-slate-300 font-semibold">Project</th>
-                  <th className="text-right py-4 px-6 text-slate-300 font-semibold">Budget</th>
-                  <th className="text-right py-4 px-6 text-slate-300 font-semibold">Actual</th>
-                  <th className="text-right py-4 px-6 text-slate-300 font-semibold">Variance</th>
-                  <th className="text-center py-4 px-6 text-slate-300 font-semibold">Status</th>
+              <thead className="bg-muted/30">
+                <tr className="border-b border-border">
+                  <th className="text-left py-4 px-6 text-muted-foreground font-semibold">Project</th>
+                  <th className="text-right py-4 px-6 text-muted-foreground font-semibold">Budget</th>
+                  <th className="text-right py-4 px-6 text-muted-foreground font-semibold">Actual</th>
+                  <th className="text-right py-4 px-6 text-muted-foreground font-semibold">Variance</th>
+                  <th className="text-center py-4 px-6 text-muted-foreground font-semibold">Status</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-border">
                 {reportData.map((project) => (
-                  <tr key={project.projectId} className="border-b border-slate-700/30 hover:bg-slate-800/30">
+                  <tr key={project.projectId} className="hover:bg-muted/30 transition-colors">
                     <td className="py-4 px-6">
                       <div>
-                        <p className="text-white font-medium">{project.projectName}</p>
-                        <p className="text-slate-400 text-sm">{project.totalQuotes} quotes</p>
+                        <p className="text-foreground font-medium">{project.projectName}</p>
+                        <p className="text-muted-foreground text-sm">{project.totalQuotes} quotes</p>
                       </div>
                     </td>
-                    <td className="py-4 px-6 text-right text-white font-medium">
+                    <td className="py-4 px-6 text-right text-foreground font-medium">
                       {formatCurrency(project.totalBudget)}
                     </td>
-                    <td className="py-4 px-6 text-right text-white font-medium">
+                    <td className="py-4 px-6 text-right text-foreground font-medium">
                       {formatCurrency(project.totalActual)}
                     </td>
                     <td className="py-4 px-6 text-right">
                       <span className={`font-medium ${
-                        project.variance >= 0 ? 'text-red-400' : 'text-green-400'
+                        project.variance >= 0 ? 'text-destructive' : 'text-success'
                       }`}>
                         {project.variance >= 0 ? '+' : ''}{formatCurrency(project.variance)}
                       </span>
                       <p className={`text-sm ${
-                        project.variancePercentage >= 0 ? 'text-red-400' : 'text-green-400'
+                        project.variancePercentage >= 0 ? 'text-destructive' : 'text-success'
                       }`}>
                         ({formatPercentage(project.variancePercentage)})
                       </p>
                     </td>
                     <td className="py-4 px-6 text-center">
-                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${
                         project.isOverBudget 
-                          ? 'bg-red-500/20 text-red-400 border border-red-500/30'
-                          : 'bg-green-500/20 text-green-400 border border-green-500/30'
+                          ? 'bg-destructive/10 text-destructive border-destructive/20'
+                          : 'bg-success/10 text-success border-success/20'
                       }`}>
                         {project.isOverBudget ? (
                           <>
@@ -403,7 +405,7 @@ const ReportsPage: React.FC = () => {
               </tbody>
             </table>
           </div>
-        </Card>
+        </div>
       </div>
     );
   };
@@ -412,13 +414,13 @@ const ReportsPage: React.FC = () => {
   const renderCashFlowReport = () => {
     if (!reportData || !reportData.data || reportData.data.length === 0) {
       return (
-        <Card variant="glass" className="p-8 text-center">
-          <Activity className="w-16 h-16 mx-auto mb-4 text-slate-400" />
-          <h3 className="text-xl font-semibold text-white mb-2">No Cash Flow Data</h3>
-          <p className="text-slate-400">
+        <div className="bg-card border border-border rounded-lg p-8 text-center">
+          <Activity className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
+          <h3 className="text-xl font-semibold text-foreground mb-2">No Cash Flow Data</h3>
+          <p className="text-muted-foreground">
             No cash flow data available. Add completed quotes to see cash flow projections.
           </p>
-        </Card>
+        </div>
       );
     }
 
@@ -426,66 +428,68 @@ const ReportsPage: React.FC = () => {
 
     return (
       <div className="space-y-6">
-        {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <Card variant="glass" className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-slate-400 text-sm">Avg Monthly Revenue</p>
-                <p className="text-3xl font-bold text-white">{formatCurrency(summary.avgMonthlyRevenue)}</p>
+        {/* KPI Row */}
+        <div className="bg-card border border-border rounded-lg p-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-success/10 text-success rounded-lg">
+                <TrendingUp className="w-6 h-6" />
               </div>
-              <TrendingUp className="w-8 h-8 text-green-400" />
-            </div>
-          </Card>
-          
-          <Card variant="glass" className="p-6">
-            <div className="flex items-center justify-between">
               <div>
-                <p className="text-slate-400 text-sm">Avg Monthly Costs</p>
-                <p className="text-3xl font-bold text-white">{formatCurrency(summary.avgMonthlyCosts)}</p>
+                <p className="text-sm text-muted-foreground">Avg Monthly Revenue</p>
+                <p className="text-2xl font-bold text-foreground">{formatCurrency(summary.avgMonthlyRevenue)}</p>
               </div>
-              <TrendingDown className="w-8 h-8 text-red-400" />
             </div>
-          </Card>
-          
-          <Card variant="glass" className="p-6">
-            <div className="flex items-center justify-between">
+            
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-destructive/10 text-destructive rounded-lg">
+                <TrendingDown className="w-6 h-6" />
+              </div>
               <div>
-                <p className="text-slate-400 text-sm">Avg Net Cash Flow</p>
-                <p className={`text-3xl font-bold ${summary.avgNetCashFlow >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                <p className="text-sm text-muted-foreground">Avg Monthly Costs</p>
+                <p className="text-2xl font-bold text-foreground">{formatCurrency(summary.avgMonthlyCosts)}</p>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-4">
+              <div className={`p-3 rounded-lg ${summary.avgNetCashFlow >= 0 ? 'bg-success/10 text-success' : 'bg-destructive/10 text-destructive'}`}>
+                <Activity className="w-6 h-6" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Avg Net Cash Flow</p>
+                <p className={`text-2xl font-bold ${summary.avgNetCashFlow >= 0 ? 'text-success' : 'text-destructive'}`}>
                   {formatCurrency(summary.avgNetCashFlow)}
                 </p>
               </div>
-              <Activity className={`w-8 h-8 ${summary.avgNetCashFlow >= 0 ? 'text-green-400' : 'text-red-400'}`} />
             </div>
-          </Card>
-          
-          <Card variant="glass" className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-slate-400 text-sm">Projected Revenue (6M)</p>
-                <p className="text-3xl font-bold text-blue-400">{formatCurrency(summary.totalProjectedRevenue)}</p>
+            
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-primary/10 text-primary rounded-lg">
+                <Calendar className="w-6 h-6" />
               </div>
-              <Calendar className="w-8 h-8 text-blue-400" />
+              <div>
+                <p className="text-sm text-muted-foreground">Projected Revenue (6M)</p>
+                <p className="text-2xl font-bold text-primary">{formatCurrency(summary.totalProjectedRevenue)}</p>
+              </div>
             </div>
-          </Card>
+          </div>
         </div>
 
         {/* Cash Flow Chart */}
-        <Card variant="glass" className="p-6">
-          <h3 className="text-xl font-bold text-white mb-6">Cash Flow Trends & Projections</h3>
+        <div className="bg-card border border-border rounded-lg p-6">
+          <h3 className="text-xl font-bold text-foreground mb-6">Cash Flow Trends & Projections</h3>
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={cashFlowData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(214.3 31.8% 91.4%)" />
                 <XAxis 
                   dataKey="month" 
-                  tick={{ fill: '#9CA3AF' }}
-                  stroke="#6B7280"
+                  tick={{ fill: 'hsl(215.4 16.3% 46.9%)' }}
+                  stroke="hsl(214.3 31.8% 91.4%)"
                 />
                 <YAxis 
-                  tick={{ fill: '#9CA3AF' }}
-                  stroke="#6B7280"
+                  tick={{ fill: 'hsl(215.4 16.3% 46.9%)' }}
+                  stroke="hsl(214.3 31.8% 91.4%)"
                   tickFormatter={(value) => `$${(value / 1000).toFixed(0)}K`}
                 />
                 <Tooltip content={CustomTooltip} />
@@ -526,17 +530,17 @@ const ReportsPage: React.FC = () => {
             </div>
             <div className="flex items-center gap-2">
               <div className="w-4 h-0.5 bg-red-400"></div>
-              <span className="text-slate-300">Costs</span>
+              <span className="text-muted-foreground">Costs</span>
             </div>
             <div className="flex items-center gap-2">
-              <div className="w-4 h-0.5 bg-blue-400 border-dashed border-t-2"></div>
-              <span className="text-slate-300">Net Cash Flow</span>
+              <div className="w-4 h-0.5 bg-primary border-dashed border-t-2"></div>
+              <span className="text-muted-foreground">Net Cash Flow</span>
             </div>
-            <div className="text-slate-400 text-xs">
+            <div className="text-muted-foreground text-xs">
               Historical (6M) | Projected (6M)
             </div>
           </div>
-        </Card>
+        </div>
       </div>
     );
   };
@@ -545,20 +549,20 @@ const ReportsPage: React.FC = () => {
   const renderReportContent = () => {
     if (loading) {
       return (
-        <Card variant="glass" className="p-12 text-center">
-          <Loader2 className="w-12 h-12 mx-auto mb-4 text-blue-400 animate-spin" />
-          <h3 className="text-xl font-semibold text-white mb-2">Generating Report</h3>
-          <p className="text-slate-400">Please wait while we analyze your data...</p>
-        </Card>
+        <div className="bg-card border border-border rounded-lg p-12 text-center">
+          <Loader2 className="w-12 h-12 mx-auto mb-4 text-primary animate-spin" />
+          <h3 className="text-xl font-semibold text-foreground mb-2">Loading Report...</h3>
+          <p className="text-muted-foreground">Please wait while we fetch your data</p>
+        </div>
       );
     }
 
     if (error) {
       return (
-        <Card variant="glass" className="p-8 text-center">
-          <AlertTriangle className="w-16 h-16 mx-auto mb-4 text-red-400" />
-          <h3 className="text-xl font-semibold text-white mb-2">Error Loading Report</h3>
-          <p className="text-slate-400 mb-4">{error}</p>
+        <div className="bg-card border border-border rounded-lg p-8 text-center">
+          <AlertTriangle className="w-16 h-16 mx-auto mb-4 text-destructive" />
+          <h3 className="text-xl font-semibold text-foreground mb-2">Error Loading Report</h3>
+          <p className="text-muted-foreground mb-4">{error}</p>
           <Button 
             onClick={() => fetchReportData(selectedReport)} 
             variant="outline"
@@ -567,7 +571,7 @@ const ReportsPage: React.FC = () => {
             <RefreshCw className="w-4 h-4" />
             Retry
           </Button>
-        </Card>
+        </div>
       );
     }
 
@@ -584,52 +588,46 @@ const ReportsPage: React.FC = () => {
   };
 
   return (
-    <div className="space-y-8">
-      {/* Report Tabs */}
-      <Card variant="glass" className="p-6">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
-          <h2 className="text-2xl font-bold text-white">Select Report Type</h2>
-          <Button
-            onClick={() => fetchReportData(selectedReport)}
-            variant="outline"
-            className="flex items-center gap-2 shrink-0"
-            disabled={loading}
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            Refresh Data
-          </Button>
+    <div className="space-y-6">
+      {/* Header Section */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div>
         </div>
+        <Button
+          onClick={() => fetchReportData(selectedReport)}
+          variant="outline"
+          className="flex items-center gap-2 shrink-0"
+          disabled={loading}
+        >
+          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          Refresh Data
+        </Button>
+      </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {/* Report Type Tabs */}
+      <div className="bg-card border border-border rounded-lg p-6">
+        <div className="flex flex-wrap gap-2 border-b border-border pb-4 mb-4">
           {REPORT_TABS.map((tab) => (
             <button
               key={tab.id}
               onClick={() => handleReportChange(tab.id)}
-              className={`p-4 rounded-xl border transition-all duration-200 text-left ${
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 ${
                 selectedReport === tab.id
-                  ? 'bg-blue-500/20 border-blue-500/50 text-white'
-                  : 'bg-slate-800/30 border-slate-600/30 text-slate-300 hover:bg-slate-800/50 hover:border-slate-500/50'
+                  ? 'bg-primary text-primary-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
               }`}
             >
-              <div className="flex items-start gap-3">
-                <div className={`p-2 rounded-lg ${
-                  selectedReport === tab.id ? 'bg-blue-500/30' : 'bg-slate-700/50'
-                }`}>
-                  {tab.icon}
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-semibold mb-1">{tab.name}</h3>
-                  <p className={`text-sm ${
-                    selectedReport === tab.id ? 'text-blue-200' : 'text-slate-400'
-                  }`}>
-                    {tab.description}
-                  </p>
-                </div>
-              </div>
+              {tab.icon}
+              {tab.name}
             </button>
           ))}
         </div>
-      </Card>
+        
+        {/* Selected Tab Description */}
+        <div className="text-sm text-muted-foreground">
+          {REPORT_TABS.find(tab => tab.id === selectedReport)?.description}
+        </div>
+      </div>
 
       {/* Report Content */}
       {renderReportContent()}

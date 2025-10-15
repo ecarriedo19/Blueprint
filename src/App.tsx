@@ -31,6 +31,9 @@ import SubscriptionSuccessModal from './components/SubscriptionSuccessModal';
 import SubscribeCancelPage from './components/SubscribeCancelPage';
 import UpdatePaymentPage from './components/UpdatePaymentPage';
 import ResubscribePage from './components/ResubscribePage';
+import ComponentShowcase from './components/ComponentShowcase';
+
+
 
 // Create a client for TanStack Query
 const queryClient = new QueryClient({
@@ -245,6 +248,10 @@ function AppContent() {
         
         {/* Subscription routes - accessible to both logged in and logged out users */}
         <Route path="/pricing" element={<PricingPage />} />
+        
+        {/* Component Showcase - Phase 1 Testing */}
+        <Route path="/showcase" element={<ComponentShowcase />} />
+        
         <Route path="/subscribe-success" element={
           isLoggedIn ? (
             // Don't redirect to subscription pages when coming from successful payment

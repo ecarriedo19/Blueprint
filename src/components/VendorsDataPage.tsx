@@ -1,7 +1,6 @@
 import { useState, useCallback } from 'react';
 import { useVendors, Vendor } from '../contexts/VendorContext';
 import { useApp } from '../contexts/AppContext';
-import Card from './Card';
 import Button from './Button';
 import VendorModal from './VendorModal';
 import Toast from './Toast';
@@ -106,7 +105,7 @@ const VendorsDataPage = () => {
 
   // Render star rating
   const renderStarRating = (rating: number | null) => {
-    if (!rating) return <span className="text-slate-400 text-sm">No rating</span>;
+    if (!rating) return <span className="text-muted-foreground text-sm">No rating</span>;
     
     return (
       <div className="flex items-center gap-1">
@@ -115,12 +114,12 @@ const VendorsDataPage = () => {
             key={i}
             className={`w-4 h-4 ${
               i < rating 
-                ? 'text-yellow-400 fill-current' 
-                : 'text-slate-600'
+                ? 'text-warning fill-current' 
+                : 'text-muted-foreground/30'
             }`}
           />
         ))}
-        <span className="text-sm text-slate-300 ml-1">{rating}/5</span>
+        <span className="text-sm text-muted-foreground ml-1">{rating}/5</span>
       </div>
     );
   };
@@ -129,64 +128,70 @@ const VendorsDataPage = () => {
   if (error) {
     return (
       <div className="space-y-6">        
-        <Card variant="glass" className="p-8 text-center">
-          <div className="text-red-400 mb-4">
+        <div className="bg-card border border-border rounded-lg p-8 text-center">
+          <div className="text-destructive mb-4">
             <Building2 className="w-16 h-16 mx-auto mb-4 opacity-50" />
-            <h3 className="text-xl font-semibold mb-2">Failed to Load Vendors</h3>
-            <p>{error}</p>
+            <h3 className="text-xl font-semibold text-foreground mb-2">Failed to Load Vendors</h3>
+            <p className="text-muted-foreground">{error}</p>
           </div>
           <Button onClick={() => window.location.reload()} variant="outline">
             Retry
           </Button>
-        </Card>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card variant="glass" className="p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-slate-400 text-sm">Total Vendors</p>
-              <p className="text-3xl font-bold text-white">{vendors.length}</p>
+      {/* Header */}
+      <div>
+      </div>
+
+      {/* KPI Row */}
+      <div className="bg-card border border-border rounded-lg p-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-primary/10 text-primary rounded-lg">
+              <Users className="w-6 h-6" />
             </div>
-            <Users className="w-8 h-8 text-blue-400" />
-          </div>
-        </Card>
-        
-        <Card variant="glass" className="p-6">
-          <div className="flex items-center justify-between">
             <div>
-              <p className="text-slate-400 text-sm">Specialties</p>
-              <p className="text-3xl font-bold text-white">{specialties.length}</p>
+              <p className="text-sm text-muted-foreground">Total Vendors</p>
+              <p className="text-2xl font-bold text-foreground">{vendors.length}</p>
             </div>
-            <Building2 className="w-8 h-8 text-green-400" />
           </div>
-        </Card>
-        
-        <Card variant="glass" className="p-6">
-          <div className="flex items-center justify-between">
+          
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-success/10 text-success rounded-lg">
+              <Building2 className="w-6 h-6" />
+            </div>
             <div>
-              <p className="text-slate-400 text-sm">High Rated</p>
-              <p className="text-3xl font-bold text-white">
+              <p className="text-sm text-muted-foreground">Specialties</p>
+              <p className="text-2xl font-bold text-foreground">{specialties.length}</p>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-warning/10 text-warning rounded-lg">
+              <Star className="w-6 h-6" />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">High Rated</p>
+              <p className="text-2xl font-bold text-foreground">
                 {vendors.filter(v => v.rating && v.rating >= 4).length}
               </p>
             </div>
-            <Star className="w-8 h-8 text-yellow-400" />
           </div>
-        </Card>
+        </div>
       </div>
 
       {/* Main Vendors Section */}
-      <Card variant="glass">
-        <div className="p-6 border-b border-slate-700/50">
+      <div className="bg-card border border-border rounded-lg">
+        <div className="p-6 border-b border-border">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div>
-              <h2 className="text-2xl font-bold text-white mb-2">Vendor Directory</h2>
-              <p className="text-slate-400">Track vendor performance, contacts, and specialties</p>
+              <h2 className="text-xl font-semibold text-foreground">Vendor Directory</h2>
+              <p className="text-muted-foreground">Track vendor performance, contacts, and specialties</p>
             </div>
             <Button
               onClick={handleAddVendor}
@@ -202,23 +207,23 @@ const VendorsDataPage = () => {
           <div className="flex flex-col md:flex-row gap-4 mt-6">
             {/* Search */}
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5" />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-5 h-5" />
               <input
                 type="text"
                 placeholder="Search vendors by name, specialty, or email..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 bg-slate-800/50 border border-slate-600/50 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full pl-10 pr-4 py-3 bg-background border border-border rounded-lg text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring"
               />
             </div>
 
             {/* Specialty Filter */}
             <div className="relative">
-              <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5" />
+              <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-5 h-5" />
               <select
                 value={filterSpecialty}
                 onChange={(e) => setFilterSpecialty(e.target.value)}
-                className="pl-10 pr-8 py-3 bg-slate-800/50 border border-slate-600/50 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none min-w-[160px]"
+                className="pl-10 pr-8 py-3 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring appearance-none min-w-[160px]"
               >
                 <option value="">All Specialties</option>
                 {specialties.map(specialty => (
@@ -229,11 +234,11 @@ const VendorsDataPage = () => {
 
             {/* Rating Filter */}
             <div className="relative">
-              <Star className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5" />
+              <Star className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-5 h-5" />
               <select
                 value={filterRating}
                 onChange={(e) => setFilterRating(e.target.value)}
-                className="pl-10 pr-8 py-3 bg-slate-800/50 border border-slate-600/50 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none min-w-[140px]"
+                className="pl-10 pr-8 py-3 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring appearance-none min-w-[140px]"
               >
                 <option value="">All Ratings</option>
                 <option value="4+">4+ Stars</option>
@@ -244,22 +249,22 @@ const VendorsDataPage = () => {
           </div>
         </div>
 
-        {/* Vendors Grid */}
+        {/* Vendors List */}
         <div className="p-6">
           {loading ? (
             <div className="flex items-center justify-center py-12">
-              <div className="w-8 h-8 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin"></div>
-              <span className="ml-3 text-slate-400">Loading vendors...</span>
+              <div className="w-8 h-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin"></div>
+              <span className="ml-3 text-muted-foreground">Loading vendors...</span>
             </div>
           ) : filteredVendors.length === 0 ? (
             <div className="text-center py-12">
-              <div className="w-16 h-16 bg-slate-700/50 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Building2 className="w-8 h-8 text-slate-400" />
+              <div className="w-16 h-16 bg-muted/50 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Building2 className="w-8 h-8 text-muted-foreground" />
               </div>
-              <h3 className="text-lg font-semibold text-slate-300 mb-2">
+              <h3 className="text-lg font-semibold text-foreground mb-2">
                 {vendors.length === 0 ? 'No Vendors Yet' : 'No Matching Vendors'}
               </h3>
-              <p className="text-slate-400 mb-6">
+              <p className="text-muted-foreground mb-6">
                 {vendors.length === 0 
                   ? 'Start building your vendor directory by adding your first vendor or subcontractor.'
                   : 'Try adjusting your search criteria or filters.'
@@ -277,88 +282,92 @@ const VendorsDataPage = () => {
               )}
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+            <div className="space-y-1">
               {filteredVendors.map((vendor) => (
-                <Card 
+                <div 
                   key={vendor.id} 
-                  variant="glass" 
-                  className="p-6 hover:bg-white/10 transition-all duration-200 group"
+                  className="p-4 border-b border-border hover:bg-muted/30 transition-colors duration-200 group"
                 >
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex-1">
-                      <h3 className="text-lg font-semibold text-white mb-1">
-                        {vendor.name}
-                      </h3>
-                      {vendor.specialty && (
-                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-500/20 text-blue-300 border border-blue-500/30">
-                          {vendor.specialty}
-                        </span>
-                      )}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4 flex-1">
+                      {/* Vendor Info */}
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="text-base font-semibold text-foreground">
+                            {vendor.name}
+                          </h3>
+                          {vendor.specialty && (
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20">
+                              {vendor.specialty}
+                            </span>
+                          )}
+                        </div>
+                        
+                        <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                          {/* Rating */}
+                          <div className="flex items-center gap-1">
+                            {renderStarRating(vendor.rating)}
+                          </div>
+                          
+                          {/* Contact Info */}
+                          {vendor.contactEmail && (
+                            <div className="flex items-center gap-1">
+                              <Mail className="w-4 h-4" />
+                              <a 
+                                href={`mailto:${vendor.contactEmail}`}
+                                className="hover:text-primary transition-colors truncate"
+                              >
+                                {vendor.contactEmail}
+                              </a>
+                            </div>
+                          )}
+                          
+                          {vendor.phone && (
+                            <div className="flex items-center gap-1">
+                              <Phone className="w-4 h-4" />
+                              <a 
+                                href={`tel:${vendor.phone}`}
+                                className="hover:text-primary transition-colors"
+                              >
+                                {vendor.phone}
+                              </a>
+                            </div>
+                          )}
+                          
+                          {/* Added Date */}
+                          {vendor.created_at && (
+                            <span className="text-xs">
+                              Added {new Date(vendor.created_at).toLocaleDateString()}
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     </div>
+                    
+                    {/* Action Buttons */}
                     <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex gap-2">
                       <button
                         onClick={() => handleEditVendor(vendor)}
-                        className="p-2 text-slate-400 hover:text-blue-400 transition-colors rounded-lg hover:bg-white/5"
+                        className="p-2 text-muted-foreground hover:text-primary transition-colors rounded-lg hover:bg-muted/50"
                         title="Edit vendor"
                       >
                         <Edit2 className="w-4 h-4" />
                       </button>
                       <button
                         onClick={() => handleDeleteVendor(vendor)}
-                        className="p-2 text-slate-400 hover:text-red-400 transition-colors rounded-lg hover:bg-white/5"
+                        className="p-2 text-muted-foreground hover:text-destructive transition-colors rounded-lg hover:bg-muted/50"
                         title="Delete vendor"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
                   </div>
-
-                  <div className="space-y-3">
-                    {/* Rating */}
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-slate-400">Rating:</span>
-                      {renderStarRating(vendor.rating)}
-                    </div>
-
-                    {/* Contact Info */}
-                    {vendor.contactEmail && (
-                      <div className="flex items-center gap-2 text-sm">
-                        <Mail className="w-4 h-4 text-slate-400" />
-                        <a 
-                          href={`mailto:${vendor.contactEmail}`}
-                          className="text-slate-300 hover:text-blue-400 transition-colors truncate"
-                          title={vendor.contactEmail}
-                        >
-                          {vendor.contactEmail}
-                        </a>
-                      </div>
-                    )}
-
-                    {vendor.phone && (
-                      <div className="flex items-center gap-2 text-sm">
-                        <Phone className="w-4 h-4 text-slate-400" />
-                        <a 
-                          href={`tel:${vendor.phone}`}
-                          className="text-slate-300 hover:text-blue-400 transition-colors"
-                        >
-                          {vendor.phone}
-                        </a>
-                      </div>
-                    )}
-
-                    {/* Added Date */}
-                    {vendor.created_at && (
-                      <div className="text-xs text-slate-500 pt-2 border-t border-slate-700/50">
-                        Added {new Date(vendor.created_at).toLocaleDateString()}
-                      </div>
-                    )}
-                  </div>
-                </Card>
+                </div>
               ))}
             </div>
           )}
         </div>
-      </Card>
+      </div>
 
       {/* Vendor Modal */}
       <VendorModal

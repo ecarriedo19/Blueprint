@@ -34,12 +34,12 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
     }
     
     // Check system preference
-    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
-      return 'light';
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      return 'dark';
     }
     
-    // Default to dark theme (current app style)
-    return 'dark';
+    // Default to light theme (matches new design system)
+    return 'light';
   });
 
   useEffect(() => {

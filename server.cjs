@@ -204,7 +204,7 @@ app.use('/uploads', express.static('uploads'));
 
 // Add security headers that work with Firebase auth and Stripe
 app.use((req, res, next) => {
-  res.header('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+  res.header('Cross-Origin-Opener-Policy', 'unsafe-none');
   res.header('Cross-Origin-Embedder-Policy', 'unsafe-none');
   next();
 });
@@ -1422,7 +1422,13 @@ const checkProjectAccess = (allowedRoles = ['Admin', 'Member']) => {
 // Get current user profile
 app.get('/api/me', requireAuth, (req, res) => {
   db.get(
-    'SELECT id, googleId, email, name, profilePictureUrl, provider, role, hasCompletedOnboarding, subscriptionStatus, stripeCustomerId FROM users WHERE id = ?',
+    `SELECT 
+      u.id, u.googleId, u.email, u.name, u.profilePictureUrl, u.provider, 
+      u.role, u.hasCompletedOnboarding, u.subscriptionStatus, u.stripeCustomerId,
+      cp.company_name as companyName
+     FROM users u 
+     LEFT JOIN company_profile cp ON u.id = cp.user_id 
+     WHERE u.id = ?`,
     [req.session.userId],
     (err, user) => {
       if (err) return res.status(500).json({ error: err.message });
@@ -5212,6 +5218,101 @@ app.delete('/api/change-orders/:changeOrderId', checkPermission(['Admin', 'Membe
       );
     }
   );
+});
+
+// Global Search endpoint for command palette
+app.get('/api/global-search', requireAuth, (req, res) => {
+  const { q: searchQuery } = req.query;
+  const userId = req.session.userId;
+
+  if (!searchQuery || searchQuery.trim().length < 2) {
+    return res.json({ success: true, results: [] });
+  }
+
+  const searchPattern = `%${searchQuery.trim()}%`;
+  const results = [];
+
+  // Search projects
+  const projectQuery = `
+    SELECT id, name, description, status, 'Project' as type
+    FROM projects 
+    WHERE user_id = ? AND (name LIKE ? OR description LIKE ?)
+    ORDER BY name ASC
+    LIMIT 5
+  `;
+
+  // Search quotes
+  const quoteQuery = `
+    SELECT id, quoteName as name, description, status, 'Quote' as type
+    FROM quotes 
+    WHERE user_id = ? AND (quoteName LIKE ? OR description LIKE ?)
+    ORDER BY quoteName ASC
+    LIMIT 5
+  `;
+
+  // Search vendors
+  const vendorQuery = `
+    SELECT id, name, description, 'Active' as status, 'Vendor' as type
+    FROM vendors 
+    WHERE user_id = ? AND (name LIKE ? OR description LIKE ?)
+    ORDER BY name ASC
+    LIMIT 5
+  `;
+
+  let completed = 0;
+  const totalQueries = 3;
+
+  const checkComplete = () => {
+    completed++;
+    if (completed === totalQueries) {
+      res.json({ 
+        success: true, 
+        results: results.sort((a, b) => a.name.localeCompare(b.name))
+      });
+    }
+  };
+
+  // Execute project search
+  db.all(projectQuery, [userId, searchPattern, searchPattern], (err, rows) => {
+    if (!err && rows) {
+      results.push(...rows.map(row => ({
+        id: row.id,
+        type: row.type,
+        name: row.name,
+        description: row.description,
+        status: row.status
+      })));
+    }
+    checkComplete();
+  });
+
+  // Execute quote search
+  db.all(quoteQuery, [userId, searchPattern, searchPattern], (err, rows) => {
+    if (!err && rows) {
+      results.push(...rows.map(row => ({
+        id: row.id,
+        type: row.type,
+        name: row.name,
+        description: row.description,
+        status: row.status
+      })));
+    }
+    checkComplete();
+  });
+
+  // Execute vendor search
+  db.all(vendorQuery, [userId, searchPattern, searchPattern], (err, rows) => {
+    if (!err && rows) {
+      results.push(...rows.map(row => ({
+        id: row.id,
+        type: row.type,
+        name: row.name,
+        description: row.description,
+        status: row.status
+      })));
+    }
+    checkComplete();
+  });
 });
 
 // AI Analysis endpoint with RAG capabilities
