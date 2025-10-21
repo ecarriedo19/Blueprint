@@ -9,7 +9,7 @@ interface SidebarProps {
   onLogout: () => Promise<void>;
 }
 
-const SidebarContext = React.createContext({ isSidebarOpen: true });
+export const SidebarContext = React.createContext({ isSidebarOpen: true });
 
 const Sidebar: React.FC<SidebarProps> = ({ isSidebarOpen, toggleSidebar, onLogout }) => {
 
@@ -52,8 +52,10 @@ const Sidebar: React.FC<SidebarProps> = ({ isSidebarOpen, toggleSidebar, onLogou
           </ul>
         </SidebarContext.Provider>
 
-        {/* User Menu */}
-        <UserMenu onLogout={onLogout} />
+        {/* User Menu - wrapped in context */}
+        <SidebarContext.Provider value={{ isSidebarOpen }}>
+          <UserMenu onLogout={onLogout} />
+        </SidebarContext.Provider>
       </nav>
       
       {/* Stripe-style Collapse Bar */}

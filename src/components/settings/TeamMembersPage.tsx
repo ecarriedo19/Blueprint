@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Users2, UserPlus, AlertCircle, UserCheck, ArrowLeft } from 'lucide-react';
+import { Users2, UserPlus, AlertCircle, CheckCircle, ArrowLeft, X } from 'lucide-react';
 import Button from '../Button';
 import ProjectAccessModal from '../ProjectAccessModal';
 import { useTeamMembers } from '../../utils/queries';
@@ -22,6 +22,25 @@ const TeamMembersPage = () => {
   
   // Use React Query mutations
   const { inviteTeamMember, updateMemberRole, removeMember } = useTeamMutations();
+
+  // Auto-dismiss notifications after 3 seconds
+  useEffect(() => {
+    if (success) {
+      const timer = setTimeout(() => {
+        setSuccess('');
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [success]);
+
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => {
+        setError('');
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [error]);
 
   // Send invitation
   const handleSendInvite = async (e: React.FormEvent) => {
@@ -121,24 +140,42 @@ const TeamMembersPage = () => {
 
       {/* Status Messages */}
       {(error || queryError) && (
-        <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-3">
-          <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
+        <div className="p-4 bg-card border border-destructive/20 rounded-lg shadow-sm flex items-center gap-3 animate-fade-in">
+          <div className="w-8 h-8 bg-destructive/10 rounded-full flex items-center justify-center flex-shrink-0">
+            <AlertCircle className="w-5 h-5 text-destructive" />
+          </div>
           <div className="flex-1">
-            <p className="text-red-200 font-medium">Error</p>
-            <p className="text-red-300 text-sm">
+            <p className="text-foreground font-medium">Error</p>
+            <p className="text-muted-foreground text-sm">
               {error || (queryError as any)?.message || 'An error occurred'}
             </p>
           </div>
+          <button 
+            onClick={() => setError('')}
+            className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-muted/50"
+            aria-label="Close notification"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
 
       {success && (
-        <div className="p-4 bg-green-500/10 border border-green-500/30 rounded-lg flex items-center gap-3">
-          <UserCheck className="w-5 h-5 text-green-400 flex-shrink-0" />
-          <div className="flex-1">
-            <p className="text-green-200 font-medium">Success</p>
-            <p className="text-green-300 text-sm">{success}</p>
+        <div className="p-4 bg-card border border-success/20 rounded-lg shadow-sm flex items-center gap-3 animate-fade-in">
+          <div className="w-8 h-8 bg-success/10 rounded-full flex items-center justify-center flex-shrink-0">
+            <CheckCircle className="w-5 h-5 text-success" />
           </div>
+          <div className="flex-1">
+            <p className="text-foreground font-medium">Success</p>
+            <p className="text-muted-foreground text-sm">{success}</p>
+          </div>
+          <button 
+            onClick={() => setSuccess('')}
+            className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-muted/50"
+            aria-label="Close notification"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
 

@@ -1,7 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useContext } from 'react';
 import { Link } from 'react-router-dom';
 import { Settings, LogOut, ChevronUp } from 'lucide-react';
 import { useCurrentUser } from '../../utils/queries';
+import { SidebarContext } from '../Sidebar';
 
 interface UserMenuProps {
   onLogout: () => Promise<void>;
@@ -11,6 +12,7 @@ const UserMenu: React.FC<UserMenuProps> = ({ onLogout }) => {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { data: currentUser } = useCurrentUser();
+  const { isSidebarOpen } = useContext(SidebarContext);
 
   // Helper function to construct absolute URLs for images
   const getAbsoluteImageUrl = (relativePath: string | null): string | null => {
@@ -65,7 +67,9 @@ const UserMenu: React.FC<UserMenuProps> = ({ onLogout }) => {
       {/* Dropdown Trigger */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center p-3 text-left hover:bg-muted/50 rounded-lg transition-colors duration-150 border-t border-border"
+        className={`w-full flex items-center p-3 text-left hover:bg-muted/50 rounded-lg transition-colors duration-150 border-t border-border group ${
+          isSidebarOpen ? '' : 'justify-center'
+        }`}
       >
         <img
           src={
@@ -73,24 +77,54 @@ const UserMenu: React.FC<UserMenuProps> = ({ onLogout }) => {
             `https://ui-avatars.com/api/?background=e0e7ff&color=3730a3&bold=true&name=${encodeURIComponent(currentUser.name || 'User')}`
           }
           alt=""
-          className="w-10 h-10 rounded-lg"
+          className={`w-10 h-10 rounded-lg ${
+            isSidebarOpen ? '' : 'relative'
+          }`}
         />
-        <div className="flex-1 ml-3 min-w-0">
-          <div className="flex items-center gap-2">
-            <h4 className="font-semibold text-card-foreground truncate">{currentUser.name || 'Loading...'}</h4>
-            {currentUser.subscriptionStatus === 'active' ? (
-              <span className="px-2 py-0.5 text-xs font-medium bg-primary text-primary-foreground rounded-full">
-                Pro
-              </span>
-            ) : (
-              <span className="px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground rounded-full">
-                Free
-              </span>
-            )}
-          </div>
-          <span className="text-xs text-muted-foreground truncate block">{currentUser.email || 'Loading...'}</span>
-        </div>
-        <ChevronUp className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${isOpen ? '' : 'rotate-180'}`} />
+        
+        {/* Badge overlay for collapsed sidebar */}
+        {!isSidebarOpen && (
+          <>
+            <div className="absolute top-1 right-1">
+              {currentUser.subscriptionStatus === 'active' ? (
+                <div className="w-3 h-3 bg-primary rounded-full border-2 border-background" />
+              ) : (
+                <div className="w-3 h-3 bg-muted-foreground/60 rounded-full border-2 border-background" />
+              )}
+            </div>
+            
+            {/* Tooltip for collapsed state */}
+            <div className="absolute left-full top-1/2 transform -translate-y-1/2 ml-2 px-3 py-2 bg-foreground text-background text-sm rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-30">
+              <div className="font-medium">{currentUser.name || 'User'}</div>
+              <div className="text-xs opacity-75">{currentUser.email}</div>
+              <div className="text-xs opacity-75 mt-1">
+                {currentUser.subscriptionStatus === 'active' ? 'Pro Plan' : 'Free Plan'}
+              </div>
+            </div>
+          </>
+        )}
+        
+        {/* Full info when sidebar is open */}
+        {isSidebarOpen && (
+          <>
+            <div className="flex-1 ml-3 min-w-0">
+              <div className="flex items-center gap-2">
+                <h4 className="font-semibold text-card-foreground truncate">{currentUser.name || 'Loading...'}</h4>
+                {currentUser.subscriptionStatus === 'active' ? (
+                  <span className="px-2 py-0.5 text-xs font-medium bg-primary text-primary-foreground rounded-full">
+                    Pro
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground rounded-full">
+                    Free
+                  </span>
+                )}
+              </div>
+              <span className="text-xs text-muted-foreground truncate block">{currentUser.email || 'Loading...'}</span>
+            </div>
+            <ChevronUp className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${isOpen ? '' : 'rotate-180'}`} />
+          </>
+        )}
       </button>
 
       {/* Dropdown Menu */}
@@ -100,7 +134,9 @@ const UserMenu: React.FC<UserMenuProps> = ({ onLogout }) => {
           <div className="fixed inset-0 z-10" onClick={() => setIsOpen(false)} />
           
           {/* Dropdown Content */}
-          <div className="absolute bottom-full left-0 right-0 mb-2 bg-card border border-border rounded-lg shadow-lg z-20 py-2">
+          <div className={`absolute bottom-full mb-2 bg-card border border-border rounded-lg shadow-lg z-20 py-2 ${
+            isSidebarOpen ? 'left-0 right-0' : 'left-0 w-64'
+          }`}>
             {/* Company Name Label */}
             {currentUser.companyName && (
               <>

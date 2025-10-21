@@ -136,75 +136,88 @@ const ProjectAccessModal = ({ isOpen, onClose, selectedUser, onSuccess }: Projec
 
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
-      case 'planning': return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300';
-      case 'in-progress': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300';
-      case 'review': return 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300';
-      case 'completed': return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300';
-      case 'on-hold': return 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300';
-      default: return 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300';
+      case 'planning': return 'bg-blue-500/10 text-blue-600 border border-blue-500/20';
+      case 'in-progress': return 'bg-yellow-500/10 text-yellow-600 border border-yellow-500/20';
+      case 'review': return 'bg-purple-500/10 text-purple-600 border border-purple-500/20';
+      case 'completed': return 'bg-success/10 text-success border border-success/20';
+      case 'on-hold': return 'bg-muted text-muted-foreground border border-border';
+      default: return 'bg-muted text-muted-foreground border border-border';
     }
   };
 
   const getPriorityColor = (priority: string) => {
     switch (priority.toLowerCase()) {
-      case 'urgent': return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300';
-      case 'high': return 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300';
-      case 'medium': return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300';
-      case 'low': return 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300';
-      default: return 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300';
+      case 'urgent': return 'bg-destructive/10 text-destructive border border-destructive/20';
+      case 'high': return 'bg-orange-500/10 text-orange-600 border border-orange-500/20';
+      case 'medium': return 'bg-primary/10 text-primary border border-primary/20';
+      case 'low': return 'bg-muted text-muted-foreground border border-border';
+      default: return 'bg-muted text-muted-foreground border border-border';
+    }
+  };
+
+  const handleOverlayClick = (e: React.MouseEvent) => {
+    if (e.target === e.currentTarget) {
+      onClose();
     }
   };
 
   if (!isOpen || !selectedUser) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-700 flex-shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-blue-500/10 dark:bg-blue-400/10 flex items-center justify-center">
-              <Users className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+    <div 
+      className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm overflow-y-auto"
+      onClick={handleOverlayClick}
+    >
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <div className="w-full max-w-4xl">
+          <Card variant="default" className="relative animate-fade-in">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-8">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <Users className="w-5 h-5 text-primary" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-semibold text-foreground">
+                    Manage Project Access
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    {selectedUser.name} ({selectedUser.email})
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={onClose}
+                className="w-8 h-8 rounded-lg bg-muted hover:bg-muted/80 flex items-center justify-center transition-colors"
+              >
+                <X className="w-4 h-4 text-muted-foreground hover:text-foreground transition-colors" />
+              </button>
             </div>
-            <div>
-              <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
-                Manage Project Access
-              </h2>
-              <p className="text-sm text-slate-600 dark:text-slate-400">
-                {selectedUser.name} ({selectedUser.email})
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 flex items-center justify-center transition-colors"
-          >
-            <X className="w-4 h-4 text-slate-600 dark:text-slate-400" />
-          </button>
-        </div>
 
         {/* Content */}
-        <div className="p-6 overflow-y-auto flex-1 min-h-0">
+        <div className="max-h-[60vh] overflow-y-auto mb-8">
           {loading ? (
             <div className="flex items-center justify-center py-12">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-              <span className="ml-3 text-slate-600 dark:text-slate-400">Loading projects...</span>
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+              <span className="ml-3 text-muted-foreground">Loading projects...</span>
             </div>
           ) : error ? (
-            <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-center gap-3">
-              <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0" />
+            <div className="p-4 bg-card border border-destructive/20 rounded-lg flex items-center gap-3">
+              <div className="w-8 h-8 bg-destructive/10 rounded-full flex items-center justify-center flex-shrink-0">
+                <AlertCircle className="w-5 h-5 text-destructive" />
+              </div>
               <div>
-                <p className="text-red-800 dark:text-red-200 font-medium">Error loading projects</p>
-                <p className="text-red-600 dark:text-red-400 text-sm">{error}</p>
+                <p className="text-foreground font-medium">Error loading projects</p>
+                <p className="text-muted-foreground text-sm">{error}</p>
               </div>
             </div>
           ) : projects.length === 0 ? (
             <div className="text-center py-12">
-              <Briefcase className="w-16 h-16 text-slate-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-slate-900 dark:text-white mb-2">
+              <Briefcase className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-foreground mb-2">
                 No Projects Found
               </h3>
-              <p className="text-slate-600 dark:text-slate-400">
+              <p className="text-muted-foreground">
                 Create some projects first to assign team members to them.
               </p>
             </div>
@@ -212,14 +225,14 @@ const ProjectAccessModal = ({ isOpen, onClose, selectedUser, onSuccess }: Projec
             <div className="space-y-4">
               <div className="flex items-center justify-between mb-6">
                 <div>
-                  <h3 className="text-lg font-medium text-slate-900 dark:text-white">
+                  <h3 className="text-lg font-medium text-foreground">
                     Projects ({projects.length})
                   </h3>
-                  <p className="text-sm text-slate-600 dark:text-slate-400">
+                  <p className="text-sm text-muted-foreground">
                     Toggle project access for {selectedUser.name}
                   </p>
                 </div>
-                <div className="text-sm text-slate-600 dark:text-slate-400">
+                <div className="text-sm text-muted-foreground">
                   Assigned: {userProjects.length} / {projects.length}
                 </div>
               </div>
@@ -230,12 +243,11 @@ const ProjectAccessModal = ({ isOpen, onClose, selectedUser, onSuccess }: Projec
                   const isUpdatingThis = updating[project.id] || false;
 
                   return (
-                    <Card key={project.id} className="border border-slate-200 dark:border-slate-700">
-                      <div className="p-4">
+                    <div key={project.id} className="border border-border rounded-lg bg-card p-4">
                         <div className="flex items-center justify-between">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-3 mb-2">
-                              <h4 className="text-base font-medium text-slate-900 dark:text-white truncate">
+                              <h4 className="text-base font-medium text-foreground truncate">
                                 {project.name}
                               </h4>
                               <div className="flex gap-2">
@@ -248,7 +260,7 @@ const ProjectAccessModal = ({ isOpen, onClose, selectedUser, onSuccess }: Projec
                               </div>
                             </div>
                             {project.description && (
-                              <p className="text-sm text-slate-600 dark:text-slate-400 line-clamp-2">
+                              <p className="text-sm text-muted-foreground line-clamp-2">
                                 {project.description}
                               </p>
                             )}
@@ -256,7 +268,7 @@ const ProjectAccessModal = ({ isOpen, onClose, selectedUser, onSuccess }: Projec
 
                           <div className="flex items-center gap-3 ml-4">
                             {isAssigned && (
-                              <div className="flex items-center gap-1 text-green-600 dark:text-green-400 text-sm">
+                              <div className="flex items-center gap-1 text-success text-sm">
                                 <Check className="w-4 h-4" />
                                 <span>Assigned</span>
                               </div>
@@ -272,13 +284,13 @@ const ProjectAccessModal = ({ isOpen, onClose, selectedUser, onSuccess }: Projec
                               <div className={`
                                 relative w-11 h-6 rounded-full transition-colors duration-200 ease-in-out
                                 ${isAssigned 
-                                  ? 'bg-blue-600' 
-                                  : 'bg-slate-200 dark:bg-slate-600'
+                                  ? 'bg-primary' 
+                                  : 'bg-muted'
                                 }
-                                ${isUpdatingThis ? 'opacity-50 cursor-not-allowed' : 'peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800'}
+                                ${isUpdatingThis ? 'opacity-50 cursor-not-allowed' : 'peer-focus:ring-4 peer-focus:ring-primary/30'}
                               `}>
                                 <div className={`
-                                  absolute top-[2px] left-[2px] bg-white dark:bg-slate-200 rounded-full h-5 w-5 transition-transform duration-200 ease-in-out
+                                  absolute top-[2px] left-[2px] bg-background rounded-full h-5 w-5 transition-transform duration-200 ease-in-out
                                   ${isAssigned ? 'translate-x-5' : 'translate-x-0'}
                                   ${isUpdatingThis ? 'animate-pulse' : ''}
                                 `} />
@@ -286,8 +298,7 @@ const ProjectAccessModal = ({ isOpen, onClose, selectedUser, onSuccess }: Projec
                             </label>
                           </div>
                         </div>
-                      </div>
-                    </Card>
+                    </div>
                   );
                 })}
               </div>
@@ -296,20 +307,22 @@ const ProjectAccessModal = ({ isOpen, onClose, selectedUser, onSuccess }: Projec
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between p-6 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 flex-shrink-0">
-          <div className="text-sm text-slate-600 dark:text-slate-400">
-            {userProjects.length > 0 && (
-              <span>
-                {selectedUser.name} has access to {userProjects.length} project{userProjects.length !== 1 ? 's' : ''}
-              </span>
-            )}
-          </div>
+        <div className="flex items-center justify-between pt-6 border-t border-border">
+              <div className="text-sm text-muted-foreground">
+                {userProjects.length > 0 && (
+                  <span>
+                    {selectedUser.name} has access to {userProjects.length} project{userProjects.length !== 1 ? 's' : ''}
+                  </span>
+                )}
+              </div>
           <Button
             variant="primary"
             onClick={onClose}
           >
             Done
           </Button>
+        </div>
+          </Card>
         </div>
       </div>
     </div>
