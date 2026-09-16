@@ -24,6 +24,10 @@ require('dotenv').config();
 const app = express();
 const PORT = 4000;
 
+// Optional: an address allowed to receive repeated test invitations (bypasses duplicate/rate-limit checks).
+const INVITE_TEST_EMAIL = process.env.INVITE_TEST_EMAIL;
+const isInviteTestEmail = (email) => Boolean(INVITE_TEST_EMAIL) && email === INVITE_TEST_EMAIL;
+
 // Server start time for detecting restarts
 const SERVER_START_TIME = Date.now();
 
@@ -215,7 +219,7 @@ app.use(session({
     db: 'sessions.db',
     dir: './'
   }),
-  secret: 'blueprint-session-secret-key-change-in-production',
+  secret: process.env.SESSION_SECRET || 'blueprint-session-secret-key-change-in-production',
   resave: false,
   saveUninitialized: false,
   cookie: {
@@ -5519,7 +5523,7 @@ async function sendInvitationEmail(email, token, inviterName, role) {
     
     // Check if it's the sandbox restriction error
     if (error.statusCode === 403 && error.message.includes('testing emails')) {
-      throw new Error(`Email sending is restricted to verified addresses. For testing, use 'carriedo78@gmail.com' or verify a domain at resend.com/domains to send to any email address.`);
+      throw new Error(`Email sending is restricted to verified addresses. For testing, send to the email address registered with your Resend account, or verify a domain at resend.com/domains to send to any email address.`);
     }
     
     throw new Error(`Failed to send email: ${error.message || JSON.stringify(error)}`);
@@ -5617,7 +5621,7 @@ app.post('/api/team/invite', checkPermission(['Admin']), async (req, res) => {
       });
     });
 
-    if (existingUser && email !== 'carriedo78@gmail.com') {
+    if (existingUser && !isInviteTestEmail(email)) {
       return res.status(400).json({ 
         success: false, 
         error: 'User with this email already exists' 
@@ -5644,7 +5648,7 @@ app.post('/api/team/invite', checkPermission(['Admin']), async (req, res) => {
     const recentAttempts = invitationHistory.length;
     const maxAttemptsPerHour = 3;
 
-    if (recentAttempts >= maxAttemptsPerHour && email !== 'carriedo78@gmail.com') {
+    if (recentAttempts >= maxAttemptsPerHour && !isInviteTestEmail(email)) {
       return res.status(429).json({ 
         success: false, 
         error: `Too many invitation attempts. Please wait before sending another invitation to ${email}.` 
@@ -5664,7 +5668,7 @@ app.post('/api/team/invite', checkPermission(['Admin']), async (req, res) => {
     );
 
     // If there's a valid invitation that was successfully sent, prevent duplicate (except for testing email)
-    if (validInvitation && validInvitation.status === 'sent' && email !== 'carriedo78@gmail.com') {
+    if (validInvitation && validInvitation.status === 'sent' && !isInviteTestEmail(email)) {
       return res.status(400).json({ 
         success: false, 
         error: 'A valid invitation has already been sent to this email' 
@@ -5683,7 +5687,7 @@ app.post('/api/team/invite', checkPermission(['Admin']), async (req, res) => {
     });
 
     // If there's a failed invitation, reuse it; otherwise create new one (always create new for testing email)
-    if (failedInvitation && email !== 'carriedo78@gmail.com') {
+    if (failedInvitation && !isInviteTestEmail(email)) {
       // Reuse existing failed invitation
       invitationId = failedInvitation.id;
       token = await new Promise((resolve, reject) => {
@@ -6011,7 +6015,7 @@ app.post('/api/invitations/accept', async (req, res) => {
                 if (existingUser) {
                   db.run('ROLLBACK');
                   // Special handling for testing email
-                  if (userData.email === 'carriedo78@gmail.com') {
+                  if (isInviteTestEmail(userData.email)) {
                     return reject(new Error('TESTING_MODE_DUPLICATE'));
                   }
                   return reject(new Error('User with this email already exists'));

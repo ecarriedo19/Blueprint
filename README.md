@@ -1,239 +1,177 @@
-# Blueprint 🏗️
+# Blueprint
 
-A modern construction project management SaaS platform built for construction professionals, contractors, and project managers. Blueprint streamlines project budgeting, quote generation, team collaboration, and financial tracking in the construction industry.
+Construction project management and financial planning (FP&A) for contractors, with an AI copilot that understands your projects and quotes.
 
-## ✨ Features
+Blueprint helps construction teams keep project finances under control. You create projects, build quotes from line items tagged with industry-standard cost codes, record change orders and actual costs, and compare budget against actuals as work progresses. An AI layer reads uploaded quote documents and turns them into structured line items, and a chat copilot answers questions using your project data plus a small construction-finance knowledge base (retrieval-augmented generation). It is a full-stack TypeScript/Node app with Google sign-in, team roles, Stripe subscriptions and a QuickBooks integration.
 
-### 🎯 Core Functionality
-- **Project Management** - Create, track, and manage construction projects with detailed budgeting
-- **Quote Generation** - Build professional quotes with line items and cost breakdowns
-- **AI-Powered Document Analysis** - Upload PDFs and let AI extract quotes and line items automatically
-- **Team Collaboration** - Invite team members with role-based access control
-- **Financial Planning & Analysis (FP&A)** - Budget vs actuals reporting and variance tracking
-- **Vendor Management** - Manage contractor and supplier relationships
-- **Change Order Management** - Track project changes and cost impacts
+## Features
 
-### 🤖 AI & Automation
-- **Document Processing** - AI-powered extraction from construction documents
-- **Quote Auto-Generation** - Intelligent line item creation from uploaded files
-- **Cost Code Integration** - CSI MasterFormat cost codes for industry standards
-- **Knowledge Base RAG** - Vector search for construction industry guidance
+**Projects and financials**
+- Projects with status, priority, budget, and per-project team access
+- Quotes with line items, vendors and CSI MasterFormat cost codes (importable templates)
+- Change orders linked to quotes, with cost impact
+- Actual cost ledger, baseline budget freeze, and a Budget vs Actuals report with health indicators
+- Vendor directory
+- Branded quote PDF export (HTML template rendered with Puppeteer, company logo upload)
 
-### 💼 Business Features
-- **Subscription Management** - Stripe-powered billing with free and pro tiers
-- **Multi-tenant Architecture** - Company-based data isolation
-- **Team Invitations** - Email-based team member onboarding
-- **Real-time Notifications** - WebSocket-powered live updates
-- **Project Access Control** - Granular permissions per project
+**AI**
+- Document analysis: upload a PDF or text quote and Google Gemini extracts the quote and line items
+- AI insights on project and quote data
+- AI Copilot chat that retrieves relevant knowledge-base passages (Transformers.js embeddings + Supabase pgvector) and can create projects and quotes through Gemini function calling
 
-## 🛠️ Tech Stack
+**Platform**
+- Google sign-in (Firebase Auth) with server-side Express sessions
+- Team invitations by email (Resend) with Admin / Member roles
+- Real-time notifications over WebSockets
+- Global search / command palette, dark and light themes
+- Stripe Checkout and Customer Portal for subscriptions, with webhook handling
+- QuickBooks Online OAuth 2.0 connection and import of purchase transactions as actual costs
 
-### Frontend
-- **React 18** with TypeScript
-- **Vite** for fast development and building
-- **TailwindCSS** for styling with custom design system
-- **Framer Motion** for smooth animations
-- **TanStack Query** for server state management
-- **React Router** for client-side routing
+## Architecture
 
-### Backend
-- **Express.js** server with CommonJS
-- **SQLite** for user data and business logic
-- **Supabase** for vector database (RAG/AI features)
-- **WebSocket** server for real-time features
-- **Multer** for file upload handling
+```mermaid
+flowchart LR
+  subgraph Browser
+    SPA[React + TypeScript SPA<br/>Vite, TanStack Query]
+  end
 
-### AI & Data Processing
-- **Google Gemini API** for document analysis
-- **Transformers.js** for embeddings generation
-- **PDF-parse** for document text extraction
-- **Vector search** with Supabase ivfflat indexing
+  subgraph Node["Express server (server.cjs)"]
+    API[REST API + sessions]
+    WS[WebSocket notifications]
+    PDF[Puppeteer PDF rendering]
+  end
 
-### Authentication & Payments
-- **Google OAuth** via Firebase Auth SDK
-- **Express sessions** with SQLite storage
-- **Stripe** for subscription billing and payments
-- **CORS** configured for OAuth compatibility
+  SQLite[(SQLite<br/>users.db, sessions.db)]
+  Supa[(Supabase pgvector<br/>knowledge base)]
+  Firebase[Firebase Auth]
+  Gemini[Google Gemini API]
+  Stripe[Stripe]
+  Resend[Resend]
+  QBO[QuickBooks Online]
 
-### Development & Deployment
-- **TypeScript** for type safety
-- **ESLint** for code quality
-- **Cypress** for end-to-end testing
-- **Concurrently** for dual-server development
-- **Hot Module Replacement** with custom backend monitoring
+  SPA -- Google sign-in --> Firebase
+  SPA -- /api via Vite proxy --> API
+  SPA <-- live updates --> WS
+  SPA -- copilot chat --> Gemini
+  API --> SQLite
+  API -- similarity search --> Supa
+  API -- document analysis --> Gemini
+  API --> Stripe
+  API --> Resend
+  API --> QBO
+```
 
-## 🚀 Quick Start
+- **Frontend** (`src/`): React 18 + TypeScript, built with Vite. Server state is managed with TanStack Query; mutations and shared UI state live in React context providers. In development Vite proxies `/api` to the Express server on port 4000.
+- **Backend** (`server.cjs`): a single Express 5 server that owns the business data in SQLite (schema is created and migrated on startup), handles sessions, file uploads (Multer), PDF parsing and generation, Stripe, Resend and QuickBooks calls, and pushes notifications over a WebSocket server on the same port.
+- **Knowledge base** (`knowledge-base/`, `scripts/`): Markdown articles are embedded with `all-MiniLM-L6-v2` via Transformers.js and stored in a Supabase `knowledge` table; the server queries them through a `search_knowledge` SQL function.
+
+Further design notes are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/RAG_SETUP.md](docs/RAG_SETUP.md) and [docs/TESTING.md](docs/TESTING.md).
+
+## Tech stack
+
+| Area | Technology |
+|------|------------|
+| Frontend | React 18, TypeScript, Vite, Tailwind CSS, Radix UI, Framer Motion, TanStack Query, React Router, Recharts, cmdk |
+| Backend | Node.js, Express 5, SQLite (`sqlite3`, `connect-sqlite3`), `ws`, Multer, pdf-parse, Puppeteer |
+| AI | Google Gemini API, Transformers.js, Supabase pgvector |
+| Auth | Firebase Authentication (Google), express-session |
+| Integrations | Stripe, Resend, QuickBooks Online |
+| Testing / tooling | Cypress, ESLint, nodemon, concurrently |
+
+## Getting started
 
 ### Prerequisites
-- Node.js 18+ 
-- npm or yarn
-- SQLite
 
-### Installation
+- Node.js 18+ and npm
+- A Firebase project with Google sign-in enabled
+- A Google Gemini API key (for AI features)
+- Optional: a Supabase project (knowledge base), Stripe account, Resend account, QuickBooks developer app
 
-1. **Clone the repository**
-```bash
-git clone https://github.com/ecarriedo19/Blueprint.git
-cd Blueprint
-```
+### Environment variables
 
-2. **Install dependencies**
+Copy `.env.example` to `.env` and fill in the values you need.
+
+| Name | Used by | Purpose |
+|------|---------|---------|
+| `VITE_API_BASE_URL` | Frontend | Express API base URL (default `http://localhost:4000`) |
+| `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_MESSAGING_SENDER_ID`, `VITE_FIREBASE_APP_ID`, `VITE_FIREBASE_MEASUREMENT_ID` | Frontend | Firebase web app config for Google sign-in |
+| `VITE_GEMINI_API_KEY` | Frontend and server | Google Gemini API key |
+| `SESSION_SECRET` | Server | Signs session cookies |
+| `FRONTEND_URL` | Server | Frontend origin for Stripe redirects and invitation links |
+| `ENCRYPTION_KEY` | Server | Encrypts stored QuickBooks tokens |
+| `SUPABASE_URL`, `SUPABASE_ANON_KEY` | Server, scripts | Supabase project for the knowledge base |
+| `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | Server | Subscriptions and webhook verification |
+| `RESEND_API_KEY` | Server | Team invitation emails |
+| `QUICKBOOKS_CLIENT_ID`, `QUICKBOOKS_CLIENT_SECRET`, `QUICKBOOKS_REDIRECT_URI` | Server | QuickBooks OAuth |
+| `INVITE_TEST_EMAIL` | Server | Optional address exempt from invitation duplicate/rate limits during testing |
+
+Gemini, Stripe, Supabase and QuickBooks features are disabled with a startup warning when their variables are missing.
+
+### Install and run
+
 ```bash
 npm install
+
+# Frontend (http://localhost:5173) and API (http://localhost:4000) together
+npm start
+
+# Or separately
+npm run dev       # Vite dev server
+npm run server    # Express API with nodemon
 ```
 
-3. **Environment Setup**
-Copy `.env.example` to `.env` and configure:
-```env
-# Required for AI features
-VITE_GEMINI_API_KEY=your_gemini_api_key
+The SQLite databases (`users.db`, `sessions.db`) are created automatically on first run and are git-ignored.
 
-# Supabase (for vector database)
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_ANON_KEY=your_supabase_key
+### Knowledge base (optional)
 
-# Stripe (for billing)
-STRIPE_SECRET_KEY=sk_test_...
-VITE_STRIPE_PUBLISHABLE_KEY=pk_test_...
+Create the `knowledge` table and `search_knowledge` function in Supabase (SQL in [docs/RAG_SETUP.md](docs/RAG_SETUP.md); `npm run setup-supabase` prints it if it cannot create it), then embed the articles:
 
-# Email service (optional)
-RESEND_API_KEY=re_...
-
-# App configuration
-SESSION_SECRET=your-session-secret
-FRONTEND_URL=http://localhost:5173
-VITE_API_BASE_URL=http://localhost:4000
-```
-
-4. **Set up the knowledge base (optional)**
 ```bash
-npm run setup-supabase  # Create vector database tables
-npm run embed           # Process knowledge base files
+npm run embed
 ```
 
-5. **Start development servers**
+### Build and test
+
 ```bash
-npm start  # Starts both frontend (5173) and backend (4000)
+npm run build       # production frontend build to dist/
+npm run lint        # ESLint
+npm run test:e2e    # Cypress end-to-end tests (requires the app running)
 ```
 
-Or start individually:
-```bash
-npm run dev     # Frontend only
-node server.cjs # Backend only
-```
-
-## 📁 Project Structure
+## Project structure
 
 ```
-Blueprint/
-├── src/                      # Frontend React application
-│   ├── components/          # React components
-│   ├── contexts/           # React Context providers
-│   ├── utils/              # Utilities and TanStack Query hooks
-│   └── main.tsx            # Application entry point
-├── server.cjs              # Express.js backend server
-├── knowledge-base/         # Markdown files for AI knowledge base
-├── scripts/               # Build and utility scripts
-├── cypress/               # E2E tests
-└── public/                # Static assets
+.
+├── src/
+│   ├── components/        # Pages and UI (projects, quotes, reports, AI copilot, settings)
+│   │   ├── layout/        # Header, search, create menu
+│   │   ├── settings/      # Company profile, team, billing, cost codes, integrations
+│   │   └── shared/
+│   ├── contexts/          # React context providers for app state and mutations
+│   ├── utils/             # TanStack Query hooks, Firebase/Google auth, helpers
+│   ├── App.tsx            # Routes
+│   └── main.tsx           # Entry point
+├── server.cjs             # Express API, SQLite schema, WebSockets, integrations
+├── quote-template.html    # HTML template for quote PDFs
+├── knowledge-base/        # Markdown articles for the AI copilot
+├── scripts/               # Embedding and Supabase setup scripts, cost-code templates
+├── cypress/               # End-to-end tests
+├── docs/                  # Architecture, RAG setup, testing and UI notes; sample quote files
+├── public/                # Static assets
+├── uploads/               # Runtime uploads (avatars, logos); contents git-ignored
+└── vite-plugin-backend-watch.ts  # Dev plugin: reloads the browser when the API restarts
 ```
 
-### Key Components
-- **DashboardLayout.tsx** - Main application shell
-- **ProjectsPage.tsx** - Project management interface
-- **QuotesPage.tsx** - Quote creation and management
-- **TeamMembersPage.tsx** - Team collaboration features
-- **AIWizard.tsx** - AI-powered document processing
+## Status
 
-### Data Flow
-- **TanStack Query** for server state caching and synchronization
-- **Context Providers** for mutations and global state
-- **WebSocket** connection for real-time updates
-- **SQLite** for persistent data storage
+Portfolio project in active development; not deployed publicly. The main workflows run locally end to end. Known limitations:
 
-## 🧪 Testing
+- The backend is a single large `server.cjs` file with SQLite; splitting it into route modules and moving to Postgres would be the next refactor.
+- The server trusts the Google user profile sent by the client after Firebase sign-in; it should verify the Firebase ID token with the Firebase Admin SDK before creating a session.
+- Development-only endpoints (`/api/test-session`, `/api/test/login`) must be disabled outside development.
+- The AI Copilot calls Gemini directly from the browser, which exposes the API key in the bundle; those calls should move behind the API.
+- `npx tsc -p tsconfig.app.json` reports a handful of existing type errors and `npm run lint` currently crashes on an ESLint plugin version mismatch; the Vite build is unaffected.
 
-### End-to-End Tests
-```bash
-npm run test:e2e     # Run Cypress tests headless
-npm run cypress:open # Open Cypress test runner
-```
+## License
 
-### Test Coverage
-- Authentication flows
-- Project CRUD operations
-- Quote generation workflows
-- Team member management
-- Payment processing
-
-## 🚢 Deployment
-
-### Production Build
-```bash
-npm run build    # Build frontend for production
-```
-
-### Environment Variables
-Ensure all production environment variables are set:
-- Database connections
-- API keys (Gemini, Stripe, Supabase)
-- Session secrets
-- CORS origins
-
-### Database Migration
-The application handles schema migrations automatically on startup.
-
-## 🏗️ Architecture
-
-### Design Patterns
-- **Hybrid full-stack architecture** with separate frontend/backend
-- **Component-based design system** with TailwindCSS
-- **Server state management** via TanStack Query
-- **Real-time updates** through WebSocket connections
-- **Multi-tenant data isolation** by company/user
-
-### Key Features
-- **Responsive design** with mobile-first approach
-- **Dark/light theme** support
-- **Progressive Web App** capabilities
-- **SEO-friendly** routing and meta tags
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-### Development Guidelines
-- Follow TypeScript best practices
-- Use the established component patterns
-- Write tests for new features
-- Follow the existing code style
-
-## 📄 License
-
-This project is proprietary software. All rights reserved.
-
-## 🆘 Support
-
-For support and questions:
-- Create an issue in this repository
-- Check the knowledge base documentation
-- Review the architecture guide in the project docs
-
-## 🗺️ Roadmap
-
-- [ ] Mobile app development
-- [ ] Advanced reporting dashboards
-- [ ] Integration with QuickBooks
-- [ ] Multi-language support
-- [ ] Advanced AI features
-- [ ] API documentation
-
----
-
-**Built with ❤️ for the construction industry**
-
-Transform your construction business with modern project management tools.
+No license has been chosen yet; all rights reserved by the author.
