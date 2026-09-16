@@ -174,4 +174,4 @@ Portfolio project in active development; not deployed publicly. The main workflo
 
 ## License
 
-No license has been chosen yet; all rights reserved by the author.
+Released under the [MIT License](LICENSE).
